@@ -1,15 +1,31 @@
-use bytes::Bytes;
+use crate::protocol::RedisDataType;
 
-enum Command {
+pub enum Command {
     Ping,
+    Echo,
+    Invalid,
 }
 
-impl TryFrom<Bytes> for Command {
-    type Error = anyhow::Error;
-    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
-        let command = String::from_utf8(bytes.to_vec())?;
-        match command.lines().next() {
-            _ => Ok(Command::Ping),
+impl From<&str> for Command {
+    fn from(val: &str) -> Self {
+        match val {
+            "PING" => Command::Ping,
+            "ECHO" => Command::Echo, // ECHO will be handled separately
+            _ => Command::Invalid,
         }
     }
+}
+
+impl Command {
+    pub fn execute(&self, args: &[RedisDataType]) -> String {
+        match self {
+            Command::Ping => encode("PONG"),
+            Command::Echo => String::from(&args[0]),
+            Command::Invalid => "*1\r\n$-1\r\n".to_string(),
+        }
+    }
+}
+
+fn encode(val: &str) -> String {
+    String::from(&RedisDataType::BulkString(val.to_string()))
 }
