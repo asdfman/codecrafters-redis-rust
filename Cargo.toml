@@ -8,6 +8,7 @@ edition = "2021"
 anyhow = "1"                                   # error handling
 tokio = { version = "1", features = ["full"] } # async networking
 hashbrown = "0"
+once_cell = "1"                              # single-assignment cell
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"]}

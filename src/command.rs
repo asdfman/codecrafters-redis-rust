@@ -14,6 +14,7 @@ pub enum Command {
         value: Value,
         expiry: Option<Instant>,
     },
+    ConfigGet(String),
     Invalid,
 }
 
@@ -41,6 +42,11 @@ impl From<&[RedisData]> for Command {
                     expiry: None,
                 }
             }
+            ("CONFIG", [RedisData::BulkString(arg), RedisData::BulkString(key)])
+                if arg.eq_ignore_ascii_case("GET") =>
+            {
+                Command::ConfigGet(key.into())
+            }
             _ => Command::Invalid,
         }
     }
@@ -63,6 +69,7 @@ impl Command {
                 store.set(key.to_string(), value.clone(), *expiry).await;
                 encode("OK")
             }
+            Command::ConfigGet(key) => crate::config::get_config_value(key),
             Command::Invalid => null(),
         }
     }
@@ -83,6 +90,6 @@ fn encode(val: &str) -> String {
 }
 
 const NULL: &str = "$-1\r\n";
-fn null() -> String {
+pub fn null() -> String {
     NULL.to_string()
 }
