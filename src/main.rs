@@ -1,9 +1,5 @@
 use anyhow::Result;
-use codecrafters_redis::{
-    command::Command,
-    protocol::{RedisArray, RedisDataType},
-    store::InMemoryStore,
-};
+use codecrafters_redis::{command::Command, protocol::RedisArray, store::InMemoryStore};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -48,10 +44,5 @@ async fn main() -> Result<()> {
 
 async fn process_request(request: String, store: &InMemoryStore) -> String {
     let request = RedisArray::from(request.as_str());
-    let Some(RedisDataType::BulkString(command)) = request.0.first() else {
-        panic!("Invalid command");
-    };
-    Command::from(command.as_str())
-        .execute(&request.0[1..], store)
-        .await
+    Command::from(request.0.as_slice()).execute(store).await
 }
