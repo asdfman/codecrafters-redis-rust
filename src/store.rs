@@ -1,7 +1,11 @@
 use bytes::Bytes;
 use hashbrown::HashMap;
-use std::{path::PathBuf, sync::Arc};
-use tokio::{sync::Mutex, time::Instant};
+use std::{
+    path::PathBuf,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tokio::sync::Mutex;
 
 use crate::{config::get_config_value, rdb::rdb_file::RdbFile};
 
@@ -20,7 +24,7 @@ impl From<String> for Value {
 #[derive(Clone, Debug)]
 pub struct ValueWrapper {
     value: Value,
-    expiry: Option<Instant>,
+    expiry: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -48,7 +52,7 @@ impl InMemoryStore {
         let mut data = self.data.lock().await;
         match data.get(key) {
             Some(wrapper) => match wrapper.expiry {
-                Some(expiry) if Instant::now() < expiry => Some(wrapper.value.clone()),
+                Some(timestamp) if !is_expired(timestamp) => Some(wrapper.value.clone()),
                 Some(_) => {
                     data.remove(key);
                     None
@@ -59,7 +63,7 @@ impl InMemoryStore {
         }
     }
 
-    pub async fn set(&self, key: String, value: Value, expiry: Option<Instant>) {
+    pub async fn set(&self, key: String, value: Value, expiry: Option<u64>) {
         let value = ValueWrapper { value, expiry };
         self.data.lock().await.insert(key, value);
     }
@@ -77,12 +81,12 @@ impl InMemoryStore {
             .sections
             .into_iter()
             .flat_map(|x| {
-                x.data.into_iter().map(|(k, v)| {
+                x.data.into_iter().map(|(k, (v, exp))| {
                     (
                         k,
                         ValueWrapper {
                             value: Value::from(v),
-                            expiry: None,
+                            expiry: exp,
                         },
                     )
                 })
@@ -96,4 +100,12 @@ impl InMemoryStore {
 
 async fn read_file(path: PathBuf) -> Option<Bytes> {
     tokio::fs::read(path).await.ok().map(Bytes::from)
+}
+
+fn is_expired(expiry_timestamp: u64) -> bool {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        >= expiry_timestamp
 }

@@ -20,7 +20,7 @@ pub struct RdbFile {
 
 pub struct DatabaseSection {
     pub index: u8,
-    pub data: HashMap<String, RdbValue>,
+    pub data: HashMap<String, (RdbValue, Option<u64>)>,
 }
 
 #[derive(Debug)]
@@ -70,18 +70,30 @@ impl TryFrom<&mut Bytes> for DatabaseSection {
         let mut section_data = HashMap::new();
 
         for _ in 0..section_size {
-            let expiry_or_type = bytes.get_u8();
-            let (k, v) = match expiry_or_type {
-                0xfd | 0xfc => panic!("Expiry not supported yet"),
-                val => decode_kv(&mut *bytes, val),
+            let mut value_type = bytes.get_u8();
+            let expiry = match value_type {
+                0xFD => get_expiry(bytes, true),
+                0xFC => get_expiry(bytes, false),
+                _ => None,
             };
-            section_data.insert(k, v);
+            if expiry.is_some() {
+                value_type = bytes.get_u8();
+            }
+            let (k, v) = decode_kv(&mut *bytes, value_type);
+            section_data.insert(k, (v, expiry));
         }
 
         Ok(DatabaseSection {
             index,
             data: section_data,
         })
+    }
+}
+
+fn get_expiry(bytes: &mut Bytes, is_sec: bool) -> Option<u64> {
+    match is_sec {
+        false => Some(bytes.get_u64_le()),
+        true => Some(1000 * bytes.get_u32_le() as u64),
     }
 }
 

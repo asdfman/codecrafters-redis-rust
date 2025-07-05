@@ -1,9 +1,8 @@
-use super::handlers::{self, get_instant};
+use super::handlers::{self, get_timestamp};
 use crate::{
     protocol::{Data, RedisArray},
     store::{InMemoryStore, Value},
 };
-use tokio::time::Instant;
 
 const NULL: &str = "$-1\r\n";
 pub fn null() -> String {
@@ -17,7 +16,7 @@ pub enum Command {
     Set {
         key: String,
         value: Value,
-        expiry: Option<Instant>,
+        expiry: Option<u64>,
     },
     ConfigGet(String),
     Keys(String),
@@ -39,7 +38,7 @@ impl From<&[Data]> for Command {
             ) if param.eq_ignore_ascii_case("PX") => Command::Set {
                 key: key.into(),
                 value: value.to_string().into(),
-                expiry: get_instant(expiry_ms),
+                expiry: get_timestamp(expiry_ms),
             },
             ("SET", [Data::BStr(key), Data::BStr(value)]) => Command::Set {
                 key: key.into(),
