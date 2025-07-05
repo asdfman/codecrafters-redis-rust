@@ -1,5 +1,7 @@
 use anyhow::Result;
-use codecrafters_redis::{command::Command, protocol::RedisArray, store::InMemoryStore};
+use codecrafters_redis::{
+    command::Command, config::get_config_value, protocol::RedisArray, store::InMemoryStore,
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -8,7 +10,8 @@ use tokio::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:6379").await?;
+    let port = get_config_value("port").unwrap_or("6379".to_string());
+    let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     let (tx, mut rx) = mpsc::channel::<(String, oneshot::Sender<String>)>(100);
     let store = InMemoryStore::init_from_file().await.unwrap_or_default();
 
