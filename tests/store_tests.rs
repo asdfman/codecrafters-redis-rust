@@ -1,17 +1,17 @@
 #[cfg(test)]
 mod tests {
-    use codecrafters_redis::{command::Command, protocol::RedisData, store::InMemoryStore};
+    use codecrafters_redis::{command::Command, protocol::Data, store::InMemoryStore};
     use tokio::time::{sleep, Duration};
 
     #[tokio::test]
     async fn test_set_with_expiry() {
         let store = InMemoryStore::default();
         let args = [
-            RedisData::BulkString("SET".to_string()),
-            RedisData::BulkString("apple".to_string()),
-            RedisData::BulkString("strawberry".to_string()),
-            RedisData::BulkString("px".to_string()),
-            RedisData::BulkString("100".to_string()),
+            Data::BStr("SET".to_string()),
+            Data::BStr("apple".to_string()),
+            Data::BStr("strawberry".to_string()),
+            Data::BStr("px".to_string()),
+            Data::BStr("100".to_string()),
         ];
         let result = Command::from(args.as_slice()).execute(&store).await;
         assert_eq!(result, "$2\r\nOK\r\n");

@@ -1,8 +1,6 @@
 use hashbrown::HashMap;
 use once_cell::sync::Lazy;
 
-use crate::protocol::{RedisArray, RedisData};
-
 static CONFIG: Lazy<HashMap<String, String>> = Lazy::new(|| {
     let mut args = HashMap::new();
     let mut iter = std::env::args().skip(1);
@@ -14,13 +12,6 @@ static CONFIG: Lazy<HashMap<String, String>> = Lazy::new(|| {
     args
 });
 
-pub fn get_config_value(key: &str) -> String {
-    let Some(value) = CONFIG.get(key) else {
-        return crate::command::null();
-    };
-    RedisArray(vec![
-        RedisData::BulkString(key.into()),
-        RedisData::BulkString(value.clone()),
-    ])
-    .into()
+pub fn get_config_value(key: &str) -> Option<String> {
+    CONFIG.get(key).cloned()
 }

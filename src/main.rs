@@ -1,6 +1,5 @@
 use anyhow::Result;
 use codecrafters_redis::{command::Command, protocol::RedisArray, store::InMemoryStore};
-use hashbrown::HashMap;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -9,11 +8,9 @@ use tokio::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let config = get_args();
-    dbg!(&config);
     let listener = TcpListener::bind("127.0.0.1:6379").await?;
     let (tx, mut rx) = mpsc::channel::<(String, oneshot::Sender<String>)>(100);
-    let store = InMemoryStore::default();
+    let store = InMemoryStore::init_from_file().await.unwrap_or_default();
 
     let store = store.clone();
     let event_loop = tokio::spawn(async move {
@@ -48,15 +45,4 @@ async fn main() -> Result<()> {
 async fn process_request(request: String, store: &InMemoryStore) -> String {
     let request = RedisArray::from(request.as_str());
     Command::from(request.0.as_slice()).execute(store).await
-}
-
-fn get_args() -> HashMap<String, String> {
-    let mut args = HashMap::new();
-    let mut iter = std::env::args().skip(1); // skip program name
-    while let Some(key) = iter.next() {
-        if let Some(value) = iter.next() {
-            args.insert(key.trim_start_matches("--").into(), value);
-        }
-    }
-    args
 }

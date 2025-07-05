@@ -1,12 +1,14 @@
+use crate::store::Value;
+
 const CRLF: &str = "\r\n";
 const CRLF_LEN: usize = 2;
 
 #[derive(Debug)]
-pub enum RedisData {
-    BulkString(String),
+pub enum Data {
+    BStr(String),
     Integer(i64),
 }
-impl RedisData {
+impl Data {
     pub fn deserialize(val: &str) -> (Self, usize) {
         match val {
             _ if val.starts_with("$") => parse_bulk_string(val),
@@ -15,23 +17,33 @@ impl RedisData {
         }
     }
 }
-impl From<&RedisData> for String {
-    fn from(data: &RedisData) -> Self {
+impl From<&Data> for String {
+    fn from(data: &Data) -> Self {
         match data {
-            RedisData::BulkString(s) => format!("${}\r\n{}\r\n", s.len(), s),
+            Data::BStr(s) => format!("${}\r\n{}\r\n", s.len(), s),
             _ => panic!("Unsupported data type for conversion to string"),
         }
     }
 }
 
-pub struct RedisArray(pub Vec<RedisData>);
+impl From<Value> for Data {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::String(s) => Data::BStr(s),
+            Value::Integer(i) => Data::Integer(i),
+            _ => panic!("Unsupported conversion"),
+        }
+    }
+}
+
+pub struct RedisArray(pub Vec<Data>);
 impl From<&str> for RedisArray {
     fn from(val: &str) -> Self {
         let mut items = Vec::new();
         let (data_len, data_start) = get_len(val);
         let mut remaining = &val[data_start..];
         for _ in 0..data_len {
-            let (item, next) = RedisData::deserialize(remaining);
+            let (item, next) = Data::deserialize(remaining);
             items.push(item);
             remaining = &remaining[next..];
         }
@@ -54,20 +66,17 @@ fn get_len(val: &str) -> (usize, usize) {
     (len_str.parse().unwrap(), len_str.len() + CRLF_LEN + 1)
 }
 
-fn parse_bulk_string(val: &str) -> (RedisData, usize) {
+fn parse_bulk_string(val: &str) -> (Data, usize) {
     let (data_len, data_start) = get_len(val);
     let data_end = data_start + data_len;
     (
-        RedisData::BulkString(val[data_start..data_end].to_string()),
+        Data::BStr(val[data_start..data_end].to_string()),
         data_end + CRLF_LEN,
     )
 }
 
-fn parse_integer(val: &str) -> (RedisData, usize) {
+fn parse_integer(val: &str) -> (Data, usize) {
     let data_end = val.find(CRLF).unwrap();
     let int_str = &val[1..data_end];
-    (
-        RedisData::Integer(int_str.parse().unwrap()),
-        data_end + CRLF_LEN,
-    )
+    (Data::Integer(int_str.parse().unwrap()), data_end + CRLF_LEN)
 }
