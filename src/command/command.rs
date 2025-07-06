@@ -59,7 +59,7 @@ impl From<&[Data]> for Command {
             ("PSYNC", [Data::BStr(replica_id), Data::BStr(offset)]) => {
                 Command::Psync(replica_id.into(), offset.into())
             }
-            ("REPLCONF", []) => Command::Replconf,
+            ("REPLCONF", [..]) => Command::Replconf,
             _ => Command::Invalid,
         }
     }
@@ -73,7 +73,7 @@ impl Command {
             Command::Get(key) => handlers::get(key, store).await,
             Command::Set { key, value, expiry } => {
                 store.set(key.to_string(), value.clone(), *expiry).await;
-                encode_bstring("OK")
+                encode_sstring("OK")
             }
             Command::ConfigGet(key) => config::get_config_value(key)
                 .map(|x| String::from(RedisArray(vec![Data::BStr(key.into()), Data::BStr(x)])))
@@ -81,7 +81,7 @@ impl Command {
             Command::Keys(pattern) => handlers::keys(pattern, store).await,
             Command::Info => handlers::info(state),
             Command::Psync(replica_id, offset) => handlers::psync(replica_id, offset, store, state),
-            Command::Replconf => encode_sstring("OK"),
+            Command::Replconf => encode_bstring("OK"),
             Command::Invalid => null(),
         }
     }
