@@ -1,11 +1,13 @@
 use anyhow::Result;
 use codecrafters_redis::{
-    command::Command, protocol::RedisArray, server::config::get_config_value,
-    server::state::ServerState, store::InMemoryStore,
+    command::Command,
+    protocol::{Data, RedisArray},
+    server::{config::get_config_value, state::ServerState},
+    store::InMemoryStore,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     sync::{mpsc, oneshot},
 };
 
@@ -16,6 +18,19 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     let store = InMemoryStore::init_from_file().await.unwrap_or_default();
     let (tx, mut rx) = mpsc::channel::<(String, oneshot::Sender<String>)>(100);
+
+    if let Some(val) = get_config_value("replicaof") {
+        let mut split = val.split_whitespace();
+        let (Some(host), Some(port)) = (split.next(), split.next()) else {
+            panic!("Invalid master host/port");
+        };
+        let mut stream = TcpStream::connect(format!("{host}:{port}")).await?;
+        let ping_command: String = RedisArray(vec![Data::BStr("PING".into())]).into();
+        stream.write_all(ping_command.as_bytes()).await?;
+        let mut buffer = [0u8; 1024];
+        let response_length = stream.read(&mut buffer).await?;
+        let response = String::from_utf8_lossy(&buffer[..response_length]).to_string();
+    }
 
     let store = store.clone();
     let event_loop = tokio::spawn(async move {

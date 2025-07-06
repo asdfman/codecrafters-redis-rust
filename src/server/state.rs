@@ -27,6 +27,10 @@ impl ServerState {
     pub fn get_all_sections(&self) -> &HashMap<String, HashMap<String, String>> {
         &self.sections
     }
+
+    pub fn is_replica(&self) -> bool {
+        self.get_key("replication", "role") == Some(&"slave".to_string())
+    }
 }
 
 impl Default for ServerState {
