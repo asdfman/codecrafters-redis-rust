@@ -35,6 +35,10 @@ async fn main() -> Result<()> {
             .write_all(encode_command("REPLCONF capa psync2").as_bytes())
             .await?;
         let _ = stream.read(&mut buffer).await?;
+        stream
+            .write_all(encode_command("PSYNC ? -1").as_bytes())
+            .await?;
+        let _ = stream.read(&mut buffer).await?;
         //let _response = String::from_utf8_lossy(&buffer[..response_length]).to_string();
     }
 

@@ -6,7 +6,7 @@ use crate::{
     store::{InMemoryStore, Value},
 };
 
-use super::{encode, null};
+use super::{encode_bstring, encode_sstring, null};
 
 pub async fn keys(pattern: &str, store: &InMemoryStore) -> String {
     let keys = store
@@ -32,11 +32,21 @@ pub fn get_timestamp(duration_ms: &str) -> Option<u64> {
 pub async fn get(key: &str, store: &InMemoryStore) -> String {
     match store.get(key).await {
         Some(value) => match value {
-            Value::String(s) => encode(&s),
+            Value::String(s) => encode_bstring(&s),
             _ => panic!("Unexpected value type"),
         },
         None => null(),
     }
+}
+
+pub fn psync(replica_id: &str, offset: &str, store: &InMemoryStore, state: &ServerState) -> String {
+    let master_replid = state
+        .get_key("replication", "master_replid")
+        .expect("Failed to get master replication id");
+    let master_repl_offset = state
+        .get_key("replication", "master_repl_offset")
+        .expect("Failed to get master replication offset");
+    encode_sstring(&format!("PSYNC {master_replid} {master_repl_offset} 0",))
 }
 
 pub fn info(state: &ServerState) -> String {
@@ -48,6 +58,6 @@ pub fn info(state: &ServerState) -> String {
                 .collect::<Vec<String>>()
                 .join("\r\n")
         })
-        .map(|s| encode(&s))
+        .map(|s| encode_bstring(&s))
         .unwrap_or_default()
 }
