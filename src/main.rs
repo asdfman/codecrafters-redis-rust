@@ -15,8 +15,7 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     let store = InMemoryStore::init_from_file().await.unwrap_or_default();
     let (tx, mut rx) = mpsc::channel::<(String, oneshot::Sender<String>)>(100);
-    let mut state = ServerState::default();
-    state.set("replication", "role", "master");
+    let state = ServerState::default();
 
     let store = store.clone();
     let event_loop = tokio::spawn(async move {

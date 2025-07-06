@@ -1,5 +1,7 @@
 use hashbrown::HashMap;
 
+use super::config::get_config_value;
+
 pub struct ServerState {
     sections: HashMap<String, HashMap<String, String>>,
 }
@@ -27,8 +29,18 @@ impl ServerState {
 
 impl Default for ServerState {
     fn default() -> Self {
-        Self {
+        let mut state = Self {
             sections: HashMap::new(),
-        }
+        };
+        state.set(
+            "replication",
+            "role",
+            if get_config_value("replicaof").is_some() {
+                "slave"
+            } else {
+                "master"
+            },
+        );
+        state
     }
 }
