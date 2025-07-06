@@ -1,5 +1,5 @@
 pub mod command;
-pub mod config;
 pub mod protocol;
 pub mod rdb;
+pub mod server;
 pub mod store;

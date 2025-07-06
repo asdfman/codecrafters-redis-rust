@@ -1,7 +1,9 @@
+use std::iter::once;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     protocol::{Data, RedisArray},
+    server::state::ServerState,
     store::{InMemoryStore, Value},
 };
 
@@ -36,4 +38,12 @@ pub async fn get(key: &str, store: &InMemoryStore) -> String {
         },
         None => null(),
     }
+}
+
+pub fn info(state: &ServerState) -> String {
+    state
+        .get_section("replication")
+        .map(|x| x.iter().map(|(k, v)| encode(&format!("{k}:{v}"))))
+        .unwrap()
+        .collect()
 }

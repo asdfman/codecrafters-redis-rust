@@ -1,6 +1,7 @@
 use super::handlers::{self, get_timestamp};
 use crate::{
     protocol::{Data, RedisArray},
+    server::{config, state::ServerState},
     store::{InMemoryStore, Value},
 };
 
@@ -20,6 +21,7 @@ pub enum Command {
     },
     ConfigGet(String),
     Keys(String),
+    Info,
     Invalid,
 }
 
@@ -49,13 +51,16 @@ impl From<&[Data]> for Command {
                 Command::ConfigGet(key.into())
             }
             ("KEYS", [Data::BStr(pattern)]) => Command::Keys(pattern.into()),
+            ("INFO", [Data::BStr(section)]) if section.eq_ignore_ascii_case("REPLICATION") => {
+                Command::Info
+            }
             _ => Command::Invalid,
         }
     }
 }
 
 impl Command {
-    pub async fn execute(&self, store: &InMemoryStore) -> String {
+    pub async fn execute(&self, store: &InMemoryStore, state: &ServerState) -> String {
         match self {
             Command::Ping => encode("PONG"),
             Command::Echo(val) => encode(val),
@@ -64,10 +69,11 @@ impl Command {
                 store.set(key.to_string(), value.clone(), *expiry).await;
                 encode("OK")
             }
-            Command::ConfigGet(key) => crate::config::get_config_value(key)
+            Command::ConfigGet(key) => config::get_config_value(key)
                 .map(|x| String::from(RedisArray(vec![Data::BStr(key.into()), Data::BStr(x)])))
                 .unwrap_or(null()),
             Command::Keys(pattern) => handlers::keys(pattern, store).await,
+            Command::Info => handlers::info(state),
             Command::Invalid => null(),
         }
     }

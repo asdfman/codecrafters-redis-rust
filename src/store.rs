@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-use crate::{config::get_config_value, rdb::rdb_file::RdbFile};
+use crate::{rdb::rdb_file::RdbFile, server::config::get_config_value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
