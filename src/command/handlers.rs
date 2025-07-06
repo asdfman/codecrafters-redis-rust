@@ -46,7 +46,7 @@ pub fn psync(replica_id: &str, offset: &str, store: &InMemoryStore, state: &Serv
     let master_repl_offset = state
         .get_key("replication", "master_repl_offset")
         .expect("Failed to get master replication offset");
-    encode_sstring(&format!("PSYNC {master_replid} {master_repl_offset} 0",))
+    encode_sstring(&format!("FULLRESYNC {master_replid} {master_repl_offset}",))
 }
 
 pub fn info(state: &ServerState) -> String {
