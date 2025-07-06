@@ -10,6 +10,7 @@ tokio = { version = "1", features = ["full"] } # async networking
 hashbrown = "0"
 once_cell = "1"                              # single-assignment cell
 bytes = "1"
+rand = "0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"]}

@@ -1,7 +1,9 @@
 use hashbrown::HashMap;
+use rand::distr::{Alphanumeric, SampleString};
 
 use super::config::get_config_value;
 
+#[derive(Debug)]
 pub struct ServerState {
     sections: HashMap<String, HashMap<String, String>>,
 }
@@ -32,15 +34,22 @@ impl Default for ServerState {
         let mut state = Self {
             sections: HashMap::new(),
         };
-        state.set(
-            "replication",
-            "role",
-            if get_config_value("replicaof").is_some() {
-                "slave"
-            } else {
-                "master"
-            },
-        );
+        match get_config_value("replicaof") {
+            Some(_) => state.set("replication", "role", "slave"),
+            None => {
+                state.set("replication", "role", "master");
+                state.set(
+                    "replication",
+                    "master_replid",
+                    gen_replication_id().as_str(),
+                );
+                state.set("replication", "master_repl_offset", "0");
+            }
+        }
         state
     }
+}
+
+fn gen_replication_id() -> String {
+    Alphanumeric.sample_string(&mut rand::rng(), 40)
 }

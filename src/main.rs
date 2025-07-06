@@ -12,10 +12,10 @@ use tokio::{
 #[tokio::main]
 async fn main() -> Result<()> {
     let port = get_config_value("port").unwrap_or("6379".to_string());
+    let state = ServerState::default();
     let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     let store = InMemoryStore::init_from_file().await.unwrap_or_default();
     let (tx, mut rx) = mpsc::channel::<(String, oneshot::Sender<String>)>(100);
-    let state = ServerState::default();
 
     let store = store.clone();
     let event_loop = tokio::spawn(async move {

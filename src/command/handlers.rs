@@ -42,7 +42,12 @@ pub async fn get(key: &str, store: &InMemoryStore) -> String {
 pub fn info(state: &ServerState) -> String {
     state
         .get_section("replication")
-        .map(|x| x.iter().map(|(k, v)| encode(&format!("{k}:{v}"))))
-        .unwrap()
-        .collect()
+        .map(|x| {
+            x.iter()
+                .map(|(k, v)| format!("{k}:{v}"))
+                .collect::<Vec<String>>()
+                .join("\r\n")
+        })
+        .map(|s| encode(&s))
+        .unwrap_or_default()
 }
