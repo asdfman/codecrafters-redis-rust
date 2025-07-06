@@ -13,23 +13,29 @@ use tokio::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let port = get_config_value("port").unwrap_or("6379".to_string());
+    let listen_port = get_config_value("port").unwrap_or("6379".to_string());
     let state = ServerState::default();
-    let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+    let listener = TcpListener::bind(format!("127.0.0.1:{listen_port}")).await?;
     let store = InMemoryStore::init_from_file().await.unwrap_or_default();
     let (tx, mut rx) = mpsc::channel::<(String, oneshot::Sender<String>)>(100);
 
     if let Some(val) = get_config_value("replicaof") {
-        let mut split = val.split_whitespace();
-        let (Some(host), Some(port)) = (split.next(), split.next()) else {
-            panic!("Invalid master host/port");
-        };
+        let (host, port) = val
+            .split_once(char::is_whitespace)
+            .expect("Invalid master host/port");
         let mut stream = TcpStream::connect(format!("{host}:{port}")).await?;
-        let ping_command: String = RedisArray(vec![Data::BStr("PING".into())]).into();
-        stream.write_all(ping_command.as_bytes()).await?;
         let mut buffer = [0u8; 1024];
-        let response_length = stream.read(&mut buffer).await?;
-        let response = String::from_utf8_lossy(&buffer[..response_length]).to_string();
+        stream.write_all(encode_command("PING").as_bytes()).await?;
+        let _ = stream.read(&mut buffer).await?;
+        stream
+            .write_all(encode_command(&format!("REPLCONF listening-port {listen_port}")).as_bytes())
+            .await?;
+        let _ = stream.read(&mut buffer).await?;
+        stream
+            .write_all(encode_command("REPLCONF capa psync2").as_bytes())
+            .await?;
+        let _ = stream.read(&mut buffer).await?;
+        //let _response = String::from_utf8_lossy(&buffer[..response_length]).to_string();
     }
 
     let store = store.clone();
@@ -67,4 +73,13 @@ async fn process_request(request: String, store: &InMemoryStore, state: &ServerS
     Command::from(request.0.as_slice())
         .execute(store, state)
         .await
+}
+
+fn encode_command(cmd: &str) -> String {
+    RedisArray(
+        cmd.split_whitespace()
+            .map(|x| Data::BStr(x.into()))
+            .collect::<Vec<Data>>(),
+    )
+    .into()
 }
