@@ -34,16 +34,16 @@ pub struct InMemoryStore {
 
 impl Default for InMemoryStore {
     fn default() -> Self {
-        Self {
+        InMemoryStore::init_from_file().unwrap_or(Self {
             data: Arc::new(Mutex::new(HashMap::new())),
-        }
+        })
     }
 }
 
 impl InMemoryStore {
-    pub async fn init_from_file() -> Option<Self> {
+    fn init_from_file() -> Option<Self> {
         let (dir, file_name) = (get_config_value("dir")?, get_config_value("dbfilename")?);
-        let mut bytes = read_file(PathBuf::from(dir).join(file_name)).await?;
+        let mut bytes = read_file(PathBuf::from(dir).join(file_name))?;
         let data = RdbFile::try_from(&mut bytes).ok()?;
         Some(Self::from_rdb_file(data))
     }
@@ -98,8 +98,8 @@ impl InMemoryStore {
     }
 }
 
-async fn read_file(path: PathBuf) -> Option<Bytes> {
-    tokio::fs::read(path).await.ok().map(Bytes::from)
+fn read_file(path: PathBuf) -> Option<Bytes> {
+    std::fs::read(path).ok().map(Bytes::from)
 }
 
 fn is_expired(expiry_timestamp: u64) -> bool {

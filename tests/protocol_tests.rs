@@ -26,7 +26,6 @@ mod tests {
 
     #[test]
     fn test_deserialize_set_with_px() {
-        // Example: SET foo bar PX 100
         let input = "*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\nPX\r\n$3\r\n100\r\n";
         let array = RedisArray::from(input)
             .0

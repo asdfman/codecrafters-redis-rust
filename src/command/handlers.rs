@@ -2,11 +2,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     protocol::{Data, RedisArray},
-    server::state::ServerState,
+    rdb::util::get_empty_rdb_file_bytes,
+    server::{context::null, state::ServerState},
     store::{InMemoryStore, Value},
 };
 
-use super::{encode_bstring, encode_sstring, null};
+use super::response::{CommandResponse, ResponseData};
 
 pub async fn keys(pattern: &str, store: &InMemoryStore) -> String {
     let keys = store
@@ -39,14 +40,21 @@ pub async fn get(key: &str, store: &InMemoryStore) -> String {
     }
 }
 
-pub fn psync(replica_id: &str, offset: &str, store: &InMemoryStore, state: &ServerState) -> String {
+pub fn psync(state: &ServerState) -> CommandResponse {
     let master_replid = state
         .get_key("replication", "master_replid")
         .expect("Failed to get master replication id");
     let master_repl_offset = state
         .get_key("replication", "master_repl_offset")
         .expect("Failed to get master replication offset");
-    encode_sstring(&format!("FULLRESYNC {master_replid} {master_repl_offset}",))
+    let (header, bytes) = psync_response();
+    CommandResponse::Multi(vec![
+        ResponseData::String(encode_sstring(&format!(
+            "FULLRESYNC {master_replid} {master_repl_offset}"
+        ))),
+        header,
+        bytes,
+    ])
 }
 
 pub fn info(state: &ServerState) -> String {
@@ -60,4 +68,20 @@ pub fn info(state: &ServerState) -> String {
         })
         .map(|s| encode_bstring(&s))
         .unwrap_or_default()
+}
+
+pub fn encode_bstring(val: &str) -> String {
+    String::from(&Data::BStr(val.to_string()))
+}
+
+pub fn encode_sstring(val: &str) -> String {
+    format!("+{val}\r\n")
+}
+
+fn psync_response() -> (ResponseData, ResponseData) {
+    let bytes = get_empty_rdb_file_bytes();
+    (
+        ResponseData::String(format!("${}\r\n", bytes.len())),
+        ResponseData::Bytes(bytes),
+    )
 }

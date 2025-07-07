@@ -1,11 +1,7 @@
-mod utils;
-
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;
     use codecrafters_redis::rdb::{length_encoded_value::LengthEncodedValue, rdb_file::RdbFile};
-
-    use crate::utils;
 
     #[test]
     fn test_integer_6bit() {
@@ -70,7 +66,7 @@ mod tests {
     #[test]
     fn test_deserialize_file() {
         let data = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fe00fb010000047065617209626c75656265727279ffb64ad09079e1b2ce";
-        let mut bytes: Bytes = utils::hex_to_bytes(data).into();
-        let rdb = RdbFile::try_from(&mut bytes).unwrap();
+        let mut bytes: Bytes = codecrafters_redis::rdb::hex_to_bytes(data).into();
+        let _rdb = RdbFile::try_from(&mut bytes).unwrap();
     }
 }
