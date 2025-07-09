@@ -76,6 +76,12 @@ pub fn encode_sstring(val: &str) -> String {
     format!("+{val}\r\n")
 }
 
+pub fn decode_sstring(val: &str) -> String {
+    val.trim_start_matches('+')
+        .trim_end_matches("\r\n")
+        .to_string()
+}
+
 fn psync_response() -> (String, Vec<u8>) {
     let bytes = get_empty_rdb_file_bytes();
     (format!("${}\r\n", bytes.len()), bytes)

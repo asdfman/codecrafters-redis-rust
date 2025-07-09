@@ -1,10 +1,11 @@
 use anyhow::Result;
 use tokio::{
+    io::{AsyncReadExt, BufReader},
     net::TcpStream,
-    sync::{mpsc, Mutex},
+    sync::{mpsc, oneshot, Mutex},
 };
 
-use crate::command::send::SendCommand;
+use crate::command::{response::CommandResponse, send::SendCommand};
 
 #[derive(Default)]
 pub struct ReplicaManager {
@@ -26,17 +27,46 @@ impl ReplicaManager {
     }
 }
 
-pub async fn init_replica(replica_config: &str, listen_port: &str) -> Result<()> {
+pub async fn init_replica(
+    replica_config: &str,
+    listen_port: &str,
+    tx: mpsc::Sender<(String, Option<oneshot::Sender<CommandResponse>>)>,
+) -> Result<()> {
     let (host, port) = replica_config
         .split_once(char::is_whitespace)
         .expect("Invalid master host/port");
-    let stream = TcpStream::connect(format!("{host}:{port}")).await?;
-    let mut sender = SendCommand::new(stream);
+    let mut stream = BufReader::new(TcpStream::connect(format!("{host}:{port}")).await?);
+    let mut sender = SendCommand::new(&mut stream);
+
     sender.send("PING").await?;
+    sender.expect_response("PONG").await?;
+
     sender
         .send(&format!("REPLCONF listening-port {listen_port}"))
         .await?;
+    sender.expect_response("OK").await?;
+
     sender.send("REPLCONF capa psync2").await?;
+    sender.expect_response("OK").await?;
+
     sender.send("PSYNC ? -1").await?;
+    let _bytes = sender.receive_bytes().await?;
+
+    tokio::spawn(async move {
+        let mut buffer = [0u8; 1024];
+        loop {
+            match stream.read(&mut buffer).await {
+                Ok(0) => break,
+                Ok(len) => {
+                    let request = String::from_utf8_lossy(&buffer[..len]).to_string();
+                    if tx.send((request, None)).await.is_err() {
+                        eprintln!("Failed to send request to event loop.");
+                    }
+                }
+                Err(_) => (),
+            }
+        }
+    });
+
     Ok(())
 }

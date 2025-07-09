@@ -15,22 +15,23 @@ use tokio::{
 async fn main() -> Result<()> {
     let listen_port = get_config_value("port").unwrap_or("6379".to_string());
     let listener = TcpListener::bind(format!("127.0.0.1:{listen_port}")).await?;
-    let (tx, mut rx) = mpsc::channel::<(String, oneshot::Sender<CommandResponse>)>(100);
+    let (tx, mut rx) = mpsc::channel::<(String, Option<oneshot::Sender<CommandResponse>>)>(100);
     let context = Arc::new(ServerContext::default());
-
-    if let Some(val) = get_config_value("replicaof") {
-        init_replica(&val, &listen_port).await?;
-    }
 
     let context_clone = context.clone();
     let event_loop = tokio::spawn(async move {
         while let Some((task, result_tx)) = rx.recv().await {
             let result = context_clone.execute_command(task).await;
-            if result_tx.send(result).is_err() {
+            if result_tx.is_some() && result_tx.unwrap().send(result).is_err() {
                 eprintln!("Failed to send response to connection handler.");
             }
         }
     });
+
+    if let Some(val) = get_config_value("replicaof") {
+        let tx = tx.clone();
+        init_replica(&val, &listen_port, tx).await?;
+    }
 
     while let Ok((stream, _)) = listener.accept().await {
         let context = context.clone();
@@ -48,7 +49,7 @@ async fn main() -> Result<()> {
 
 async fn handle_connection(
     mut reader: BufReader<TcpStream>,
-    tx: mpsc::Sender<(String, oneshot::Sender<CommandResponse>)>,
+    tx: mpsc::Sender<(String, Option<oneshot::Sender<CommandResponse>>)>,
     context: &ServerContext,
 ) -> Result<()> {
     let mut buffer = [0u8; 1024];
@@ -60,7 +61,7 @@ async fn handle_connection(
 
         let request = String::from_utf8_lossy(&buffer[..length]).to_string();
         let (result_tx, result_rx) = oneshot::channel();
-        tx.send((request, result_tx)).await?;
+        tx.send((request, Some(result_tx))).await?;
 
         match result_rx.await? {
             CommandResponse::Stream => {
