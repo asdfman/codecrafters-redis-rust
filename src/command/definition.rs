@@ -1,6 +1,7 @@
 use super::handlers::get_timestamp;
 use crate::{protocol::Data, store::Value};
 
+#[derive(Clone)]
 pub enum Command {
     Ping,
     Echo(String),

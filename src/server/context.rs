@@ -1,3 +1,9 @@
+use tokio::{
+    io::{AsyncWriteExt, BufReader},
+    net::TcpStream,
+    sync::mpsc,
+};
+
 use crate::{
     command::{
         definition::Command,
@@ -9,6 +15,8 @@ use crate::{
     store::InMemoryStore,
 };
 
+use super::replica::ReplicaManager;
+
 const NULL: &str = "$-1\r\n";
 pub fn null() -> String {
     NULL.to_string()
@@ -18,15 +26,21 @@ pub fn null() -> String {
 pub struct ServerContext {
     store: InMemoryStore,
     state: ServerState,
+    replicas: ReplicaManager,
 }
 
 impl ServerContext {
     pub fn new(store: InMemoryStore, state: ServerState) -> Self {
-        Self { store, state }
+        Self {
+            store,
+            state,
+            replicas: ReplicaManager::default(),
+        }
     }
 
-    pub async fn execute_command(&self, command: &Command) -> CommandResponse {
-        match command {
+    pub async fn execute_command(&self, request: String) -> CommandResponse {
+        let command = Command::from(RedisArray::from(request.as_str()).0.as_slice());
+        match &command {
             Command::Ping => bstring_response("PONG"),
             Command::Echo(val) => bstring_response(val),
             Command::Get(key) => CommandResponse::Single(handlers::get(key, &self.store).await),
@@ -34,6 +48,7 @@ impl ServerContext {
                 self.store
                     .set(key.to_string(), value.clone(), *expiry)
                     .await;
+                self.replicas.broadcast(request.into()).await;
                 sstring_response("OK")
             }
             Command::ConfigGet(key) => config::get_config_value(key)
@@ -47,16 +62,25 @@ impl ServerContext {
                 CommandResponse::Single(handlers::keys(pattern, &self.store).await)
             }
             Command::Info => CommandResponse::Single(handlers::info(&self.state)),
-            Command::Psync(..) => handlers::psync(&self.state),
+            Command::Psync(..) => CommandResponse::Stream,
             Command::Replconf => sstring_response("OK"),
             Command::Invalid => null_response(),
         }
     }
 
-    pub async fn process_request(&self, request: String) -> CommandResponse {
-        let request = RedisArray::from(request.as_str());
-        let command = Command::from(request.0.as_slice());
-        self.execute_command(&command).await
+    pub async fn add_replica(&self, mut reader: BufReader<TcpStream>) {
+        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(100);
+        tokio::spawn(async move {
+            while let Some(data) = rx.recv().await {
+                if let Err(e) = reader.write_all(&data).await {
+                    eprintln!("Failed to write response to replica: {e}");
+                }
+            }
+        });
+        if handlers::psync(&tx, &self.state).await.is_err() {
+            eprintln!("Replica sync failed");
+        }
+        self.replicas.add_channel(tx).await;
     }
 }
 

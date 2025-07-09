@@ -1,4 +1,6 @@
+use anyhow::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc::Sender;
 
 use crate::{
     protocol::{Data, RedisArray},
@@ -6,8 +8,6 @@ use crate::{
     server::{context::null, state::ServerState},
     store::{InMemoryStore, Value},
 };
-
-use super::response::{CommandResponse, ResponseData};
 
 pub async fn keys(pattern: &str, store: &InMemoryStore) -> String {
     let keys = store
@@ -40,7 +40,7 @@ pub async fn get(key: &str, store: &InMemoryStore) -> String {
     }
 }
 
-pub fn psync(state: &ServerState) -> CommandResponse {
+pub async fn psync(tx: &Sender<Vec<u8>>, state: &ServerState) -> Result<()> {
     let master_replid = state
         .get_key("replication", "master_replid")
         .expect("Failed to get master replication id");
@@ -48,13 +48,11 @@ pub fn psync(state: &ServerState) -> CommandResponse {
         .get_key("replication", "master_repl_offset")
         .expect("Failed to get master replication offset");
     let (header, bytes) = psync_response();
-    CommandResponse::Multi(vec![
-        ResponseData::String(encode_sstring(&format!(
-            "FULLRESYNC {master_replid} {master_repl_offset}"
-        ))),
-        header,
-        bytes,
-    ])
+    let response = encode_sstring(&format!("FULLRESYNC {master_replid} {master_repl_offset}"));
+    tx.send(response.into()).await?;
+    tx.send(header.into()).await?;
+    tx.send(bytes).await?;
+    Ok(())
 }
 
 pub fn info(state: &ServerState) -> String {
@@ -78,10 +76,7 @@ pub fn encode_sstring(val: &str) -> String {
     format!("+{val}\r\n")
 }
 
-fn psync_response() -> (ResponseData, ResponseData) {
+fn psync_response() -> (String, Vec<u8>) {
     let bytes = get_empty_rdb_file_bytes();
-    (
-        ResponseData::String(format!("${}\r\n", bytes.len())),
-        ResponseData::Bytes(bytes),
-    )
+    (format!("${}\r\n", bytes.len()), bytes)
 }
