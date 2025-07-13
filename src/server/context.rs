@@ -1,8 +1,4 @@
-use tokio::{
-    io::{AsyncWriteExt, BufReader},
-    net::TcpStream,
-    sync::mpsc,
-};
+use tokio::{io::AsyncWriteExt, net::TcpStream, sync::mpsc};
 
 use crate::{
     command::{
@@ -38,8 +34,24 @@ impl ServerContext {
         }
     }
 
-    pub async fn execute_command(&self, request: String) -> CommandResponse {
-        let command = Command::from(RedisArray::from(request.as_str()).0.as_slice());
+    pub async fn process_request(&self, request: &str) -> CommandResponse {
+        dbg!(&request);
+        let commands = RedisArray::extract_all(request);
+        dbg!(&commands);
+        if commands.len() == 1 {
+            return self.execute_command(&commands[0]).await;
+        }
+        let mut responses = vec![];
+        for command in commands {
+            if let CommandResponse::Single(response) = self.execute_command(&command).await {
+                responses.push(response);
+            }
+        }
+        CommandResponse::Multiple(responses)
+    }
+
+    async fn execute_command(&self, request: &RedisArray) -> CommandResponse {
+        let command = Command::from(request.0.as_slice());
         match &command {
             Command::Ping => bstring_response("PONG"),
             Command::Echo(val) => bstring_response(val),
@@ -48,7 +60,7 @@ impl ServerContext {
                 self.store
                     .set(key.to_string(), value.clone(), *expiry)
                     .await;
-                self.replicas.broadcast(request.into()).await;
+                self.replicas.broadcast(raw_get_command(key)).await;
                 sstring_response("OK")
             }
             Command::ConfigGet(key) => config::get_config_value(key)
@@ -68,7 +80,7 @@ impl ServerContext {
         }
     }
 
-    pub async fn add_replica(&self, mut reader: BufReader<TcpStream>) {
+    pub async fn add_replica(&self, mut reader: TcpStream) {
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(100);
         tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
@@ -94,4 +106,8 @@ fn sstring_response(val: &str) -> CommandResponse {
 
 fn null_response() -> CommandResponse {
     CommandResponse::Single(null())
+}
+
+fn raw_get_command(key: &str) -> Vec<u8> {
+    format!("*2\r\n$3\r\nGET\r\n${}\r\n{}\r\n", key.len(), key).into_bytes()
 }

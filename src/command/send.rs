@@ -1,18 +1,18 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
 
 use crate::protocol::{Data, RedisArray};
 
 pub struct SendCommand<'a> {
-    stream: &'a mut BufReader<TcpStream>,
+    stream: &'a mut TcpStream,
     buffer: [u8; 1024],
 }
 
 impl<'a> SendCommand<'a> {
-    pub fn new(stream: &'a mut BufReader<TcpStream>) -> Self {
+    pub fn new(stream: &'a mut TcpStream) -> Self {
         Self {
             stream,
             buffer: [0; 1024],
@@ -47,13 +47,25 @@ impl<'a> SendCommand<'a> {
     }
 
     pub async fn receive_bytes(&mut self) -> Result<Vec<u8>> {
+        let mut len_bytes = vec![];
         loop {
-            let len = self.stream.read(&mut self.buffer).await?;
+            let mut byte = [0u8; 1];
+            let len = self.stream.read_exact(&mut byte).await?;
             if len == 0 {
-                continue;
+                bail!("Connection closed");
             }
-            return Ok(self.buffer[..len].to_vec());
+            len_bytes.push(byte[0]);
+
+            if len_bytes.ends_with(b"\r\n") {
+                break;
+            }
         }
+        let len_str = String::from_utf8_lossy(&len_bytes);
+        let len: usize = len_str[1..len_str.len() - 2].parse()?;
+
+        let mut data = vec![0u8; len];
+        self.stream.read_exact(&mut data).await?;
+        Ok(data)
     }
 }
 

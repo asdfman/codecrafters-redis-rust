@@ -34,12 +34,12 @@ impl LengthEncodedValue {
     }
 }
 
-pub fn get_6_bit_integer(bytes: &mut Bytes) -> usize {
+pub fn get_6_bit_integer(bytes: &mut Bytes) -> Option<usize> {
     let val = bytes.get_u8();
     if val & 0b1100_0000 != 0 {
-        panic!("Expected a 6-bit integer type");
+        return None;
     }
-    val as usize
+    Some(val as usize)
 }
 
 fn len_14_bits(first: u8, second: u8) -> usize {

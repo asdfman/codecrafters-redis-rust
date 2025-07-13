@@ -3,10 +3,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use codecrafters_redis::{
     command::response::CommandResponse,
+    protocol::split_redis_array_string,
     server::{config::get_config_value, context::ServerContext, replica::init_replica},
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::{mpsc, oneshot},
 };
@@ -21,7 +22,7 @@ async fn main() -> Result<()> {
     let context_clone = context.clone();
     let event_loop = tokio::spawn(async move {
         while let Some((task, result_tx)) = rx.recv().await {
-            let result = context_clone.execute_command(task).await;
+            let result = context_clone.process_request(&task).await;
             if result_tx.is_some() && result_tx.unwrap().send(result).is_err() {
                 eprintln!("Failed to send response to connection handler.");
             }
@@ -37,7 +38,7 @@ async fn main() -> Result<()> {
         let context = context.clone();
         let tx = tx.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(BufReader::new(stream), tx, &context).await {
+            if let Err(e) = handle_connection(stream, tx, &context).await {
                 eprintln!("Connection ended with error: {e}");
             }
         });
@@ -48,7 +49,7 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_connection(
-    mut reader: BufReader<TcpStream>,
+    mut reader: TcpStream,
     tx: mpsc::Sender<(String, Option<oneshot::Sender<CommandResponse>>)>,
     context: &ServerContext,
 ) -> Result<()> {
@@ -60,15 +61,23 @@ async fn handle_connection(
         }
 
         let request = String::from_utf8_lossy(&buffer[..length]).to_string();
-        let (result_tx, result_rx) = oneshot::channel();
-        tx.send((request, Some(result_tx))).await?;
+        for command in split_redis_array_string(&request) {
+            print!("Client request: {:?}", &command);
+            let (result_tx, result_rx) = oneshot::channel();
+            tx.send((command, Some(result_tx))).await?;
 
-        match result_rx.await? {
-            CommandResponse::Stream => {
-                context.add_replica(reader).await;
-                return Ok(());
+            match result_rx.await? {
+                CommandResponse::Stream => {
+                    context.add_replica(reader).await;
+                    return Ok(());
+                }
+                CommandResponse::Single(response) => reader.write_all(response.as_bytes()).await?,
+                CommandResponse::Multiple(responses) => {
+                    for response in responses {
+                        reader.write_all(response.as_bytes()).await?;
+                    }
+                }
             }
-            CommandResponse::Single(response) => reader.write_all(response.as_bytes()).await?,
         }
     }
 }
