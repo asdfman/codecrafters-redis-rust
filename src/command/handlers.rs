@@ -82,6 +82,15 @@ pub fn decode_sstring(val: &str) -> String {
         .to_string()
 }
 
+pub fn replconf_getack(bytes: usize) -> String {
+    RedisArray(vec![
+        Data::BStr("REPLCONF".into()),
+        Data::BStr("ACK".into()),
+        Data::BStr(format!("{bytes}")),
+    ])
+    .into()
+}
+
 fn psync_response() -> (String, Vec<u8>) {
     let bytes = get_empty_rdb_file_bytes();
     (format!("${}\r\n", bytes.len()), bytes)

@@ -34,48 +34,31 @@ impl ServerContext {
         }
     }
 
-    pub async fn process_request(&self, request: &str) -> CommandResponse {
-        dbg!(&request);
-        let commands = RedisArray::extract_all(request);
-        dbg!(&commands);
-        if commands.len() == 1 {
-            return self.execute_command(&commands[0]).await;
-        }
-        let mut responses = vec![];
-        for command in commands {
-            if let CommandResponse::Single(response) = self.execute_command(&command).await {
-                responses.push(response);
-            }
-        }
-        CommandResponse::Multiple(responses)
-    }
-
-    async fn execute_command(&self, request: &RedisArray) -> CommandResponse {
-        let command = Command::from(request.0.as_slice());
-        match &command {
+    pub async fn execute_command(&self, request: Data) -> CommandResponse {
+        let Data::Array(arr) = request else {
+            return null_response();
+        };
+        match Command::from(arr.0.as_slice()) {
             Command::Ping => bstring_response("PONG"),
-            Command::Echo(val) => bstring_response(val),
-            Command::Get(key) => CommandResponse::Single(handlers::get(key, &self.store).await),
+            Command::Echo(val) => bstring_response(&val),
+            Command::Get(key) => CommandResponse::Single(handlers::get(&key, &self.store).await),
             Command::Set { key, value, expiry } => {
-                self.store
-                    .set(key.to_string(), value.clone(), *expiry)
-                    .await;
-                self.replicas.broadcast(raw_get_command(key)).await;
+                self.store.set(key.to_string(), value.clone(), expiry).await;
+                self.replicas.broadcast(raw_get_command(&key)).await;
                 sstring_response("OK")
             }
-            Command::ConfigGet(key) => config::get_config_value(key)
+            Command::ConfigGet(key) => config::get_config_value(&key)
                 .map(|x| {
-                    CommandResponse::Single(
-                        RedisArray(vec![Data::BStr(key.into()), Data::BStr(x)]).into(),
-                    )
+                    CommandResponse::Single(RedisArray(vec![Data::BStr(key), Data::BStr(x)]).into())
                 })
                 .unwrap_or(null_response()),
             Command::Keys(pattern) => {
-                CommandResponse::Single(handlers::keys(pattern, &self.store).await)
+                CommandResponse::Single(handlers::keys(&pattern, &self.store).await)
             }
             Command::Info => CommandResponse::Single(handlers::info(&self.state)),
             Command::Psync(..) => CommandResponse::Stream,
             Command::Replconf => sstring_response("OK"),
+            Command::ReplconfGetAck(arg) => null_response(),
             Command::Invalid => null_response(),
         }
     }

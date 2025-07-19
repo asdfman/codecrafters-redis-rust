@@ -1,12 +1,13 @@
 use crate::store::Value;
 
-const CRLF: &str = "\r\n";
-const CRLF_LEN: usize = 2;
+pub const CRLF: &str = "\r\n";
+pub const CRLF_LEN: usize = 2;
 
 #[derive(Debug)]
 pub enum Data {
     BStr(String),
     SStr(String),
+    Array(RedisArray),
 }
 impl Data {
     pub fn deserialize(val: &str) -> (Self, usize) {
@@ -94,7 +95,7 @@ pub fn split_redis_array_string(val: &str) -> Vec<String> {
         .collect()
 }
 
-fn get_len(val: &str) -> (usize, usize) {
+pub fn get_len(val: &str) -> (usize, usize) {
     let len_str = &val[1..val.find(CRLF).unwrap()];
     (len_str.parse().unwrap(), len_str.len() + CRLF_LEN + 1)
 }

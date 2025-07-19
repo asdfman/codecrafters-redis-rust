@@ -1,11 +1,18 @@
 use anyhow::Result;
 use tokio::{
-    io::AsyncReadExt,
     net::TcpStream,
     sync::{mpsc, oneshot, Mutex},
 };
 
-use crate::command::{response::CommandResponse, send::SendCommand};
+use crate::{
+    command::{
+        definition::Command, handlers::replconf_getack, response::CommandResponse,
+        send::SendCommand,
+    },
+    protocol::Data,
+};
+
+use super::stream_reader::StreamReader;
 
 #[derive(Default)]
 pub struct ReplicaManager {
@@ -30,7 +37,7 @@ impl ReplicaManager {
 pub async fn init_replica(
     replica_config: &str,
     listen_port: &str,
-    tx: mpsc::Sender<(String, Option<oneshot::Sender<CommandResponse>>)>,
+    tx: mpsc::Sender<(Command, Option<oneshot::Sender<CommandResponse>>)>,
 ) -> Result<()> {
     let (host, port) = replica_config
         .split_once(char::is_whitespace)
@@ -54,18 +61,31 @@ pub async fn init_replica(
     sender.receive_bytes().await?;
 
     tokio::spawn(async move {
-        let mut buffer = [0u8; 2048];
+        let mut reader = StreamReader::new(stream, true);
         loop {
-            match stream.read(&mut buffer).await {
-                Ok(0) => break,
-                Ok(len) => {
-                    let request = String::from_utf8_lossy(&buffer[..len]).to_string();
-                    println!("Replica received: {:?}", &request);
-                    if tx.send((request, None)).await.is_err() {
-                        eprintln!("Failed to send request to event loop.");
-                    }
+            let Ok(data) = reader.read_command().await else {
+                break;
+            };
+            let Some(data) = data else {
+                continue;
+            };
+            let command = Command::from(&data);
+            if let Command::ReplconfGetAck(arg) = &command {
+                let (result_tx, result_rx) = oneshot::channel();
+                if tx.send((command, Some(result_tx))).await.is_err() {
+                    eprintln!("Failed to send request to event loop.");
                 }
-                Err(err) => eprintln!("Error reading from replica stream: {err}"),
+                let response = result_rx.await;
+                if let CommandResponse::ReplconfAck = response {
+                    reader
+                        .stream
+                        .write_all(replconf_getack(reader.get_processed_bytes()).as_bytes())
+                        .await;
+                }
+            } else {
+                if tx.send((command, None)).await.is_err() {
+                    eprintln!("Failed to send request to event loop.");
+                }
             }
         }
     });

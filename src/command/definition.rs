@@ -16,7 +16,17 @@ pub enum Command {
     Info,
     Psync(String, String),
     Replconf,
+    ReplconfGetAck(String),
     Invalid,
+}
+
+impl From<&Data> for Command {
+    fn from(val: &Data) -> Self {
+        match val {
+            Data::Array(arr) => Command::from(arr.0.as_slice()),
+            _ => Command::Invalid,
+        }
+    }
 }
 
 impl From<&[Data]> for Command {
@@ -50,6 +60,11 @@ impl From<&[Data]> for Command {
             }
             ("PSYNC", [Data::BStr(replica_id), Data::BStr(offset)]) => {
                 Command::Psync(replica_id.into(), offset.into())
+            }
+            ("REPLCONF", [Data::BStr(subcmd), Data::BStr(arg), ..])
+                if subcmd.eq_ignore_ascii_case("GETACK") && arg == "*" =>
+            {
+                Command::ReplconfGetAck(arg.into())
             }
             ("REPLCONF", [..]) => Command::Replconf,
             _ => Command::Invalid,

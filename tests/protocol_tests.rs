@@ -34,6 +34,7 @@ mod tests {
             .map(|x| match x {
                 Data::BStr(s) => s.clone(),
                 Data::SStr(s) => s.clone(),
+                Data::Array(_) => panic!(),
             })
             .collect::<Vec<String>>();
         assert_eq!(array, vec!["SET", "foo", "bar", "PX", "100"]);
