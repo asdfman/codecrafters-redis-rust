@@ -1,7 +1,10 @@
 use super::handlers::get_timestamp;
-use crate::{protocol::Data, store::Value};
+use crate::{
+    protocol::{Data, RedisArray},
+    store::Value,
+};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Command {
     Ping,
     Echo(String),
@@ -10,6 +13,7 @@ pub enum Command {
         key: String,
         value: Value,
         expiry: Option<u64>,
+        raw_command: String,
     },
     ConfigGet(String),
     Keys(String),
@@ -20,8 +24,8 @@ pub enum Command {
     Invalid,
 }
 
-impl From<&Data> for Command {
-    fn from(val: &Data) -> Self {
+impl From<Data> for Command {
+    fn from(val: Data) -> Self {
         match val {
             Data::Array(arr) => Command::from(arr.0.as_slice()),
             _ => Command::Invalid,
@@ -45,11 +49,13 @@ impl From<&[Data]> for Command {
                 key: key.into(),
                 value: value.to_string().into(),
                 expiry: get_timestamp(expiry_ms),
+                raw_command: get_raw_array_command(val),
             },
             ("SET", [Data::BStr(key), Data::BStr(value)]) => Command::Set {
                 key: key.into(),
                 value: value.to_string().into(),
                 expiry: None,
+                raw_command: get_raw_array_command(val),
             },
             ("CONFIG", [Data::BStr(arg), Data::BStr(key)]) if arg.eq_ignore_ascii_case("GET") => {
                 Command::ConfigGet(key.into())
@@ -70,4 +76,8 @@ impl From<&[Data]> for Command {
             _ => Command::Invalid,
         }
     }
+}
+
+fn get_raw_array_command(val: &[Data]) -> String {
+    RedisArray(val.to_vec()).into()
 }

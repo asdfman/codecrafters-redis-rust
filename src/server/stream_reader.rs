@@ -1,21 +1,21 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use bytes::{Buf, BytesMut};
-use tokio::{io::AsyncReadExt, net::TcpStream};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::protocol::{Data, RedisArray, CRLF_LEN};
-const CRLF: u8 = b'\r';
+const CR: u8 = b'\r';
 
-pub struct StreamReader {
-    pub stream: TcpStream,
+pub struct StreamReader<T: AsyncRead + AsyncWrite + Unpin> {
+    pub stream: T,
     buffer: BytesMut,
-    temp_resp_array: Option<Vec<Data>>,
+    temp_resp_array: Option<Data>,
     expected_array_items: usize,
     processed_bytes: usize,
     is_replication_stream: bool,
 }
 
-impl StreamReader {
-    pub fn new(stream: TcpStream, is_replication_stream: bool) -> Self {
+impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
+    pub fn new(stream: T, is_replication_stream: bool) -> Self {
         Self {
             stream,
             buffer: BytesMut::with_capacity(2048),
@@ -26,32 +26,34 @@ impl StreamReader {
         }
     }
 
-    pub async fn read_command(&mut self) -> Result<Option<Data>> {
+    pub async fn read_command(&mut self) -> Result<Data> {
         loop {
-            dbg!(&self.buffer);
-            if let Some(data) = self.try_parse_resp() {
-                if let Some(arr) = self.temp_resp_array.as_mut() {
-                    arr.push(data);
-                    self.expected_array_items -= 1;
-                    if self.expected_array_items == 0 {
-                        return Ok(Some(Data::Array(RedisArray(
-                            self.temp_resp_array.take().unwrap(),
-                        ))));
+            loop {
+                match self.try_parse_resp() {
+                    Some(Data::Array(data)) => self.temp_resp_array = Some(Data::Array(data)),
+                    Some(data) if self.expected_array_items > 0 => {
+                        self.add_to_array(data);
+                        if self.expected_array_items == 0 {
+                            return Ok(self.temp_resp_array.take().unwrap());
+                        }
                     }
-                } else {
-                    return Ok(Some(data));
+                    Some(data) => {
+                        return Ok(data);
+                    }
+                    None => break,
                 }
             }
-            dbg!(&self.buffer);
-            let Ok(len) = self.stream.read_buf(&mut self.buffer).await else {
-                bail!("Error reading stream")
-            };
-            if len == 0 {
+            let len = self.stream.read_buf(&mut self.buffer).await?;
+            if len == 0 && self.buffer.is_empty() {
                 bail!("EOF received")
             }
-            if self.buffer.is_empty() {
-                return Ok(None);
-            }
+        }
+    }
+
+    fn add_to_array(&mut self, data: Data) {
+        if let Some(Data::Array(arr)) = self.temp_resp_array.as_mut() {
+            arr.0.push(data);
+            self.expected_array_items -= 1;
         }
     }
 
@@ -68,17 +70,16 @@ impl StreamReader {
     }
 
     fn parse_array(&mut self) -> Option<Data> {
-        let (data_len, data_start) = get_len(&self.buffer[1..])?;
-        self.advance(data_start + CRLF_LEN);
+        let (data_len, data_start) = get_len(&self.buffer)?;
+        self.advance(data_start);
         self.expected_array_items = data_len;
-        self.temp_resp_array = Some(vec![]);
-        None
+        Some(Data::Array(RedisArray(vec![])))
     }
 
     fn parse_bulk_string(&mut self) -> Option<Data> {
-        let (data_len, data_start) = get_len(&self.buffer[1..])?;
+        let (data_len, data_start) = get_len(&self.buffer)?;
         let total_len = data_start + data_len + CRLF_LEN;
-        if self.buffer.len() < total_len + 1 {
+        if self.buffer.len() < total_len {
             return None;
         }
         let data = Some(Data::BStr(
@@ -86,12 +87,12 @@ impl StreamReader {
                 .ok()?
                 .to_string(),
         ));
-        self.advance(data_start + total_len);
+        self.advance(total_len);
         data
     }
 
     fn parse_simple_string(&mut self) -> Option<Data> {
-        let data_end = self.buffer.iter().position(|&b| b == CRLF)?;
+        let data_end = self.buffer.iter().position(|&b| b == CR)?;
         let data = Some(Data::SStr(
             str::from_utf8(&self.buffer[1..data_end]).ok()?.to_string(),
         ));
@@ -109,10 +110,34 @@ impl StreamReader {
     pub fn get_processed_bytes(&self) -> usize {
         self.processed_bytes
     }
+
+    pub async fn receive_bytes(&mut self) -> Result<Vec<u8>> {
+        let len = self.stream.read_buf(&mut self.buffer).await?;
+        if self.buffer[0] != b'$' {
+            return Ok(vec![]);
+        }
+        let Some((data_len, data_start)) = get_len(&self.buffer) else {
+            bail!("Failed to get length of data")
+        };
+        let data = self.buffer[data_start..data_start + data_len].to_vec();
+        self.buffer.advance(data_start + data_len);
+        Ok(data)
+    }
+
+    pub async fn write_stream(&mut self, data: &[u8]) -> Result<()> {
+        self.stream
+            .write_all(data)
+            .await
+            .context("Failed to write to stream")
+    }
+
+    pub fn take_stream(self) -> T {
+        self.stream
+    }
 }
 
 fn get_len(val: &[u8]) -> Option<(usize, usize)> {
-    let len_str = std::str::from_utf8(&val[..val.iter().position(|&b| b == CRLF)?]).ok()?;
+    let len_str = std::str::from_utf8(&val[1..val.iter().position(|&b| b == CR)?]).ok()?;
     let len = len_str.parse().ok()?;
-    Some((len, len_str.len() + CRLF_LEN))
+    Some((len, len_str.len() + CRLF_LEN + 1))
 }

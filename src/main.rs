@@ -3,14 +3,12 @@ use std::sync::Arc;
 use anyhow::{bail, Result};
 use codecrafters_redis::{
     command::{definition::Command, response::CommandResponse},
-    protocol::Data,
     server::{
         config::get_config_value, context::ServerContext, replica::init_replica,
         stream_reader::StreamReader,
     },
 };
 use tokio::{
-    io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     sync::{mpsc, oneshot},
 };
@@ -34,7 +32,11 @@ async fn main() -> Result<()> {
 
     if let Some(val) = get_config_value("replicaof") {
         let tx = tx.clone();
-        init_replica(&val, &listen_port, tx).await?;
+        tokio::spawn(async move {
+            if let Err(e) = init_replica(&val, &listen_port, tx).await {
+                eprintln!("Failed to initialize replica: {e}");
+            }
+        });
     }
 
     while let Ok((stream, _)) = listener.accept().await {
@@ -59,24 +61,19 @@ async fn handle_connection(
     let mut reader = StreamReader::new(stream, false);
     loop {
         let data = reader.read_command().await?;
-        let Some(data) = data else {
-            continue;
-        };
 
         let (result_tx, result_rx) = oneshot::channel();
         tx.send((data.into(), Some(result_tx))).await?;
 
         match result_rx.await? {
             CommandResponse::Stream => {
-                context.add_replica(reader.stream).await;
+                context.add_replica(reader.take_stream()).await;
                 return Ok(());
             }
-            CommandResponse::Single(response) => {
-                reader.stream.write_all(response.as_bytes()).await?
-            }
+            CommandResponse::Single(response) => reader.write_stream(response.as_bytes()).await?,
             CommandResponse::Multiple(responses) => {
                 for response in responses {
-                    reader.stream.write_all(response.as_bytes()).await?;
+                    reader.write_stream(response.as_bytes()).await?;
                 }
             }
             CommandResponse::ReplconfAck => bail!("REPLCONF ACK in non-replication stream"),

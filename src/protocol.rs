@@ -3,7 +3,7 @@ use crate::store::Value;
 pub const CRLF: &str = "\r\n";
 pub const CRLF_LEN: usize = 2;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Data {
     BStr(String),
     SStr(String),
@@ -36,14 +36,9 @@ impl From<Value> for Data {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RedisArray(pub Vec<Data>);
-impl From<&str> for RedisArray {
-    fn from(val: &str) -> Self {
-        let (arr, _) = RedisArray::extract_array_from_str(val);
-        arr
-    }
-}
+
 impl From<RedisArray> for String {
     fn from(arr: RedisArray) -> Self {
         let mut result = String::new();
@@ -52,34 +47,6 @@ impl From<RedisArray> for String {
             result.push_str(String::from(&item).as_str());
         }
         result
-    }
-}
-
-impl RedisArray {
-    pub fn extract_array_from_str(val: &str) -> (RedisArray, &str) {
-        let (data_len, data_start) = get_len(val);
-        let mut remaining = &val[data_start..];
-        let mut items = Vec::new();
-        for _ in 0..data_len {
-            let (item, next) = Data::deserialize(remaining);
-            items.push(item);
-            remaining = &remaining[next..];
-        }
-        (RedisArray(items), remaining)
-    }
-
-    pub fn extract_all(val: &str) -> Vec<RedisArray> {
-        let mut remaining = val;
-        let mut arrays = vec![];
-        while !val.is_empty() {
-            if val.starts_with("*") {
-                return arrays;
-            }
-            let (arr, next) = Self::extract_array_from_str(remaining);
-            arrays.push(arr);
-            remaining = next;
-        }
-        arrays
     }
 }
 

@@ -4,12 +4,8 @@ use tokio::{
     sync::{mpsc, oneshot, Mutex},
 };
 
-use crate::{
-    command::{
-        definition::Command, handlers::replconf_getack, response::CommandResponse,
-        send::SendCommand,
-    },
-    protocol::Data,
+use crate::command::{
+    definition::Command, handlers::replconf_getack, response::CommandResponse, send::SendCommand,
 };
 
 use super::stream_reader::StreamReader;
@@ -58,34 +54,33 @@ pub async fn init_replica(
 
     sender.send("PSYNC ? -1").await?;
     let _response = sender.receive_sstring().await;
-    sender.receive_bytes().await?;
+
+    let mut reader = StreamReader::new(stream, true);
+    reader.receive_bytes().await?;
 
     tokio::spawn(async move {
-        let mut reader = StreamReader::new(stream, true);
         loop {
             let Ok(data) = reader.read_command().await else {
                 break;
             };
-            let Some(data) = data else {
-                continue;
-            };
-            let command = Command::from(&data);
-            if let Command::ReplconfGetAck(arg) = &command {
+            let command = Command::from(data);
+            if let Command::ReplconfGetAck(_) = &command {
                 let (result_tx, result_rx) = oneshot::channel();
                 if tx.send((command, Some(result_tx))).await.is_err() {
                     eprintln!("Failed to send request to event loop.");
                 }
                 let response = result_rx.await;
-                if let CommandResponse::ReplconfAck = response {
-                    reader
-                        .stream
-                        .write_all(replconf_getack(reader.get_processed_bytes()).as_bytes())
-                        .await;
+                if let Ok(CommandResponse::ReplconfAck) = response {
+                    if reader
+                        .write_stream(replconf_getack(reader.get_processed_bytes()).as_bytes())
+                        .await
+                        .is_err()
+                    {
+                        eprintln!("Failed to send REPLCONF ACK response.");
+                    }
                 }
-            } else {
-                if tx.send((command, None)).await.is_err() {
-                    eprintln!("Failed to send request to event loop.");
-                }
+            } else if tx.send((command, None)).await.is_err() {
+                eprintln!("Failed to send request to event loop.");
             }
         }
     });

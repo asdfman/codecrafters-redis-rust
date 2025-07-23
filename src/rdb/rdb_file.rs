@@ -87,7 +87,6 @@ impl TryFrom<&mut Bytes> for DatabaseSection {
             let (k, v) = decode_kv(&mut *bytes, value_type);
             section_data.insert(k, (v, expiry));
         }
-        dbg!(&section_data);
 
         Ok(DatabaseSection {
             index,

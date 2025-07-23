@@ -34,17 +34,19 @@ impl ServerContext {
         }
     }
 
-    pub async fn execute_command(&self, request: Data) -> CommandResponse {
-        let Data::Array(arr) = request else {
-            return null_response();
-        };
-        match Command::from(arr.0.as_slice()) {
-            Command::Ping => bstring_response("PONG"),
+    pub async fn execute_command(&self, request: Command) -> CommandResponse {
+        match request {
+            Command::Ping => sstring_response("PONG"),
             Command::Echo(val) => bstring_response(&val),
             Command::Get(key) => CommandResponse::Single(handlers::get(&key, &self.store).await),
-            Command::Set { key, value, expiry } => {
+            Command::Set {
+                key,
+                value,
+                expiry,
+                raw_command,
+            } => {
                 self.store.set(key.to_string(), value.clone(), expiry).await;
-                self.replicas.broadcast(raw_get_command(&key)).await;
+                self.replicas.broadcast(raw_command.into_bytes()).await;
                 sstring_response("OK")
             }
             Command::ConfigGet(key) => config::get_config_value(&key)
@@ -58,7 +60,7 @@ impl ServerContext {
             Command::Info => CommandResponse::Single(handlers::info(&self.state)),
             Command::Psync(..) => CommandResponse::Stream,
             Command::Replconf => sstring_response("OK"),
-            Command::ReplconfGetAck(arg) => null_response(),
+            Command::ReplconfGetAck(_) => null_response(),
             Command::Invalid => null_response(),
         }
     }
@@ -89,8 +91,4 @@ fn sstring_response(val: &str) -> CommandResponse {
 
 fn null_response() -> CommandResponse {
     CommandResponse::Single(null())
-}
-
-fn raw_get_command(key: &str) -> Vec<u8> {
-    format!("*2\r\n$3\r\nGET\r\n${}\r\n{}\r\n", key.len(), key).into_bytes()
 }
