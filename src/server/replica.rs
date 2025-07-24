@@ -26,6 +26,10 @@ impl ReplicaManager {
             let _ = channel.send(data.clone()).await;
         }
     }
+
+    pub async fn count(&self) -> i64 {
+        self.channels.lock().await.len() as i64
+    }
 }
 
 pub async fn init_replica(

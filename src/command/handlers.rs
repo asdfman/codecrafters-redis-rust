@@ -73,7 +73,11 @@ pub fn encode_bstring(val: &str) -> String {
 }
 
 pub fn encode_sstring(val: &str) -> String {
-    format!("+{val}\r\n")
+    String::from(&Data::SStr(val.to_string()))
+}
+
+pub fn encode_int(val: i64) -> String {
+    String::from(&Data::Int(val))
 }
 
 pub fn decode_sstring(val: &str) -> String {

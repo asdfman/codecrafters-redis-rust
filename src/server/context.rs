@@ -3,7 +3,7 @@ use tokio::{io::AsyncWriteExt, net::TcpStream, sync::mpsc};
 use crate::{
     command::{
         definition::Command,
-        handlers::{self, encode_bstring, encode_sstring},
+        handlers::{self, encode_bstring, encode_int, encode_sstring},
         response::CommandResponse,
     },
     protocol::{Data, RedisArray},
@@ -64,7 +64,7 @@ impl ServerContext {
             Command::Wait {
                 num_replicas,
                 timeout,
-            } => CommandResponse::Single(":0\r\n".into()),
+            } => int_response(self.replicas.count().await),
             Command::Invalid => null_response(),
         }
     }
@@ -95,4 +95,8 @@ fn sstring_response(val: &str) -> CommandResponse {
 
 fn null_response() -> CommandResponse {
     CommandResponse::Single(null())
+}
+
+fn int_response(val: i64) -> CommandResponse {
+    CommandResponse::Single(encode_int(val))
 }

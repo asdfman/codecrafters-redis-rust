@@ -7,6 +7,7 @@ pub const CRLF_LEN: usize = 2;
 pub enum Data {
     BStr(String),
     SStr(String),
+    Int(i64),
     Array(RedisArray),
 }
 impl Data {
@@ -22,6 +23,8 @@ impl From<&Data> for String {
     fn from(data: &Data) -> Self {
         match data {
             Data::BStr(s) => format!("${}\r\n{}\r\n", s.len(), s),
+            Data::SStr(s) => format!("+{s}\r\n"),
+            Data::Int(i) => format!(":{}{}\r\n", if *i < 0 { "-" } else { "+" }, i),
             _ => panic!("Unsupported data type for conversion to string"),
         }
     }
