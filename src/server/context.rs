@@ -60,7 +60,7 @@ impl ServerContext {
             Command::Info => CommandResponse::Single(handlers::info(&self.state)),
             Command::Psync(..) => CommandResponse::Stream,
             Command::Replconf => sstring_response("OK"),
-            Command::ReplconfGetAck(_) => null_response(),
+            Command::ReplconfGetAck(_) => CommandResponse::ReplconfAck,
             Command::Invalid => null_response(),
         }
     }

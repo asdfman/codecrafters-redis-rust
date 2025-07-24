@@ -4,9 +4,7 @@ use tokio::{
     sync::{mpsc, oneshot, Mutex},
 };
 
-use crate::command::{
-    definition::Command, handlers::replconf_getack, response::CommandResponse, send::SendCommand,
-};
+use crate::command::{definition::Command, response::CommandResponse};
 
 use super::stream_reader::StreamReader;
 
@@ -38,41 +36,47 @@ pub async fn init_replica(
     let (host, port) = replica_config
         .split_once(char::is_whitespace)
         .expect("Invalid master host/port");
-    let mut stream = TcpStream::connect(format!("{host}:{port}")).await?;
-    let mut sender = SendCommand::new(&mut stream);
+    let stream = TcpStream::connect(format!("{host}:{port}")).await?;
+    let mut reader = StreamReader::new(stream, true);
 
-    sender.send("PING").await?;
-    sender.expect_response("PONG").await?;
+    reader.send("PING").await?;
+    reader.expect_response("PONG").await?;
 
-    sender
+    reader
         .send(&format!("REPLCONF listening-port {listen_port}"))
         .await?;
-    sender.expect_response("OK").await?;
+    reader.expect_response("OK").await?;
 
-    sender.send("REPLCONF capa psync2").await?;
-    sender.expect_response("OK").await?;
+    reader.send("REPLCONF capa psync2").await?;
+    reader.expect_response("OK").await?;
 
-    sender.send("PSYNC ? -1").await?;
-    let _response = sender.receive_sstring().await;
+    reader.send("PSYNC ? -1").await?;
+    let _response = reader.receive_sstring().await;
 
-    let mut reader = StreamReader::new(stream, true);
-    reader.receive_bytes().await?;
+    reader.expect_bytes().await?;
 
     tokio::spawn(async move {
         loop {
+            reader.reset_processed_bytes(); // Only count propagated commands
             let Ok(data) = reader.read_command().await else {
                 break;
             };
             let command = Command::from(data);
             if let Command::ReplconfGetAck(_) = &command {
+                reader.ignore_latest_processed_bytes(); // ReplconfAck processed bytes do not count
+                println!("Received REPLCONF GETACK");
                 let (result_tx, result_rx) = oneshot::channel();
                 if tx.send((command, Some(result_tx))).await.is_err() {
                     eprintln!("Failed to send request to event loop.");
                 }
                 let response = result_rx.await;
                 if let Ok(CommandResponse::ReplconfAck) = response {
+                    println!("Writing REPLCONF ACK response");
                     if reader
-                        .write_stream(replconf_getack(reader.get_processed_bytes()).as_bytes())
+                        .write_stream(
+                            crate::command::handlers::replconf_getack(reader.get_processed_bytes())
+                                .as_bytes(),
+                        )
                         .await
                         .is_err()
                     {

@@ -50,18 +50,6 @@ impl From<RedisArray> for String {
     }
 }
 
-pub fn split_redis_array_string(val: &str) -> Vec<String> {
-    val.split("*")
-        .filter_map(|s| {
-            if s.is_empty() {
-                None
-            } else {
-                Some(format!("*{s}"))
-            }
-        })
-        .collect()
-}
-
 pub fn get_len(val: &str) -> (usize, usize) {
     let len_str = &val[1..val.find(CRLF).unwrap()];
     (len_str.parse().unwrap(), len_str.len() + CRLF_LEN + 1)

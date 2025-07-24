@@ -137,7 +137,7 @@ fn print_mixed_bytes(bytes: &[u8]) {
         if len > 0 {
             // Print valid UTF-8 as text
             let s = std::str::from_utf8(&bytes[i..i + len]).unwrap();
-            print!("{}", s);
+            print!("{s}");
             i += len;
         } else {
             // Print single byte as hex using the hex crate

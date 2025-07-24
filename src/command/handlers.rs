@@ -86,7 +86,7 @@ pub fn replconf_getack(bytes: usize) -> String {
     RedisArray(vec![
         Data::BStr("REPLCONF".into()),
         Data::BStr("ACK".into()),
-        Data::BStr(format!("{bytes}")),
+        Data::BStr(bytes.to_string()),
     ])
     .into()
 }
