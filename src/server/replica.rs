@@ -56,26 +56,26 @@ pub async fn init_replica(
     reader.expect_bytes().await?;
 
     tokio::spawn(async move {
+        reader.reset_processed_bytes(); // Only count propagated commands
         loop {
-            reader.reset_processed_bytes(); // Only count propagated commands
             let Ok(data) = reader.read_command().await else {
                 break;
             };
             let command = Command::from(data);
             if let Command::ReplconfGetAck(_) = &command {
-                reader.ignore_latest_processed_bytes(); // ReplconfAck processed bytes do not count
-                println!("Received REPLCONF GETACK");
                 let (result_tx, result_rx) = oneshot::channel();
                 if tx.send((command, Some(result_tx))).await.is_err() {
                     eprintln!("Failed to send request to event loop.");
                 }
                 let response = result_rx.await;
                 if let Ok(CommandResponse::ReplconfAck) = response {
-                    println!("Writing REPLCONF ACK response");
                     if reader
                         .write_stream(
-                            crate::command::handlers::replconf_getack(reader.get_processed_bytes())
-                                .as_bytes(),
+                            crate::command::handlers::replconf_getack(
+                                reader.get_processed_bytes()
+                                    - reader.get_latest_command_byte_length(),
+                            )
+                            .as_bytes(),
                         )
                         .await
                         .is_err()

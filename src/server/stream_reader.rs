@@ -1,3 +1,5 @@
+use std::{future::poll_fn, pin::Pin, task::Poll};
+
 use anyhow::{bail, Context, Result};
 use bytes::{Buf, BytesMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -32,19 +34,16 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
         self.current_command_processed_bytes = 0;
         loop {
             loop {
-                println!("Buffer before parsing: {:?}", self.buffer);
                 match self.try_parse_resp() {
                     Some(Data::Array(data)) => self.temp_resp_array = Some(Data::Array(data)),
                     Some(data) if self.expected_array_items > 0 => {
                         self.add_to_array(data);
                         if self.expected_array_items == 0 {
-                            println!("Returning array: {:?}", self.temp_resp_array);
                             self.total_processed_bytes += self.current_command_processed_bytes;
                             return Ok(self.temp_resp_array.take().unwrap());
                         }
                     }
                     Some(data) => {
-                        println!("Returning data: {data:?}");
                         self.total_processed_bytes += self.current_command_processed_bytes;
                         return Ok(data);
                     }
@@ -120,19 +119,43 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
     }
 
     async fn read_stream(&mut self) -> Result<usize> {
-        println!("Buffer before read: {:?}", self.buffer);
-        let res = self
-            .stream
+        self.stream
             .read_buf(&mut self.buffer)
             .await
-            .context("Failed to read from stream");
-        println!("Buffer after read: {:?}", self.buffer);
-        res
+            .context("Failed to read from stream")
+    }
+
+    async fn non_blocking_read(&mut self) -> Result<usize> {
+        let mut temp_buffer = vec![0u8; 1024];
+        let mut read_buf = tokio::io::ReadBuf::new(&mut temp_buffer);
+
+        let res = poll_fn(
+            |cx| match Pin::new(&mut self.stream).poll_read(cx, &mut read_buf) {
+                Poll::Pending | Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+                Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+            },
+        )
+        .await;
+
+        match res {
+            Ok(()) => {
+                let filled = read_buf.filled().len();
+                if filled > 0 {
+                    self.buffer.extend_from_slice(read_buf.filled());
+                }
+                Ok(filled)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(0),
+            Err(e) => Err(e).context("Failed to read from stream"),
+        }
     }
 
     pub async fn expect_bytes(&mut self) -> Result<Vec<u8>> {
-        self.read_stream().await?;
-        println!("Buffer after reading bytes: {:?}", self.buffer);
+        if self.buffer.is_empty() {
+            self.read_stream().await?;
+        } else {
+            self.non_blocking_read().await?;
+        }
         if self.buffer.is_empty() || self.buffer[0] != b'$' {
             bail!("Expected bytes, but got: {:?}", self.buffer);
         }
@@ -141,7 +164,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
         };
         let data = self.buffer[data_start..data_start + data_len].to_vec();
         self.buffer.advance(data_start + data_len);
-        println!("Buffer after extracting bytes: {:?}", self.buffer);
         Ok(data)
     }
 
@@ -168,7 +190,11 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
     }
 
     pub async fn receive_sstring(&mut self) -> Result<String> {
-        self.read_stream().await?;
+        if self.buffer.is_empty() {
+            self.read_stream().await?;
+        } else {
+            self.non_blocking_read().await?;
+        }
         if self.buffer.is_empty() || self.buffer[0] != b'+' {
             bail!(
                 "Expected simple string response, but got: {:?}",
@@ -188,8 +214,9 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
     pub fn reset_processed_bytes(&mut self) {
         self.total_processed_bytes = 0;
     }
-    pub fn ignore_latest_processed_bytes(&mut self) {
-        self.total_processed_bytes -= self.current_command_processed_bytes;
+
+    pub fn get_latest_command_byte_length(&self) -> usize {
+        self.current_command_processed_bytes
     }
 }
 
