@@ -21,6 +21,10 @@ pub enum Command {
     Psync(String, String),
     Replconf,
     ReplconfGetAck(String),
+    Wait {
+        num_replicas: u64,
+        timeout: u64,
+    },
     Invalid,
 }
 
@@ -73,6 +77,10 @@ impl From<&[Data]> for Command {
                 Command::ReplconfGetAck(arg.into())
             }
             ("REPLCONF", [..]) => Command::Replconf,
+            ("WAIT", [Data::BStr(num), Data::BStr(timeout)]) => Command::Wait {
+                num_replicas: num.parse::<u64>().unwrap(),
+                timeout: timeout.parse::<u64>().unwrap(),
+            },
             _ => Command::Invalid,
         }
     }

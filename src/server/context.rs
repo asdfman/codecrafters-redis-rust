@@ -61,6 +61,10 @@ impl ServerContext {
             Command::Psync(..) => CommandResponse::Stream,
             Command::Replconf => sstring_response("OK"),
             Command::ReplconfGetAck(_) => CommandResponse::ReplconfAck,
+            Command::Wait {
+                num_replicas,
+                timeout,
+            } => CommandResponse::Single(":0\r\n".into()),
             Command::Invalid => null_response(),
         }
     }
