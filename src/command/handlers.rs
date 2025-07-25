@@ -80,10 +80,31 @@ pub async fn type_handler(key: &str, store: &InMemoryStore) -> String {
         Some(value) => match value {
             Value::String(_) => "string".to_string(),
             Value::List(_) => "list".to_string(),
+            Value::Stream { .. } => "stream".to_string(),
             _ => panic!("Unexpected value type"),
         },
         None => "none".to_string(),
     }
+}
+
+pub async fn xadd(
+    key: String,
+    id: String,
+    entry_key: String,
+    entry_value: String,
+    store: &InMemoryStore,
+) -> String {
+    store
+        .set(
+            key.to_string(),
+            Value::Stream {
+                id: id.clone(),
+                entries: vec![(entry_key, entry_value)],
+            },
+            None,
+        )
+        .await;
+    id
 }
 
 pub fn encode_bstring(val: &str) -> String {

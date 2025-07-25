@@ -14,6 +14,10 @@ pub enum Value {
     String(String),
     Integer(i64),
     List(Vec<String>),
+    Stream {
+        id: String,
+        entries: Vec<(String, String)>,
+    },
 }
 impl From<String> for Value {
     fn from(s: String) -> Self {

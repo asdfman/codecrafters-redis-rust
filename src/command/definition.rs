@@ -27,6 +27,11 @@ pub enum Command {
         timeout: u64,
     },
     Type(String),
+    XAdd {
+        key: String,
+        id: String,
+        entry: (String, String),
+    },
     Invalid,
 }
 
@@ -89,6 +94,14 @@ impl From<&[Data]> for Command {
                 timeout: timeout.parse::<u64>().unwrap(),
             },
             ("TYPE", [Data::BStr(key)]) => Command::Type(key.into()),
+            (
+                "XADD",
+                [Data::BStr(key), Data::BStr(id), Data::BStr(entry_key), Data::BStr(entry_value)],
+            ) => Command::XAdd {
+                key: key.into(),
+                id: id.into(),
+                entry: (entry_key.into(), entry_value.into()),
+            },
             _ => Command::Invalid,
         }
     }

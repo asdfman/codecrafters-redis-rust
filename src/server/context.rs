@@ -78,6 +78,10 @@ impl ServerContext {
                     .await
                     .as_ref(),
             ),
+            Command::XAdd { key, id, entry } => {
+                let response = handlers::xadd(key, id, entry.0, entry.1, &self.store).await;
+                bstring_response(&response)
+            }
             Command::Invalid | Command::ReplconfAck(_) => null_response(),
         }
     }
