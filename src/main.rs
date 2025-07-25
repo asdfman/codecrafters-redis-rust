@@ -32,11 +32,9 @@ async fn main() -> Result<()> {
 
     if let Some(val) = get_config_value("replicaof") {
         let tx = tx.clone();
-        // tokio::spawn(async move {
         if let Err(e) = init_replica(&val, &listen_port, tx).await {
             eprintln!("Failed to initialize replica: {e}");
         }
-        // });
     }
 
     while let Ok((stream, _)) = listener.accept().await {
@@ -76,7 +74,7 @@ async fn handle_connection(
                     reader.write_stream(response.as_bytes()).await?;
                 }
             }
-            CommandResponse::ReplconfAck => bail!("REPLCONF ACK in non-replication stream"),
+            CommandResponse::ReplconfAck => bail!("REPLCONF ACK in client stream"),
         }
     }
 }

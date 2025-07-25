@@ -60,7 +60,7 @@ pub async fn init_replica(
     reader.expect_bytes().await?;
 
     tokio::spawn(async move {
-        reader.reset_processed_bytes(); // Only count propagated commands
+        reader.reset_processed_bytes();
         loop {
             let Ok(data) = reader.read_command().await else {
                 break;

@@ -9,10 +9,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_ping_command() -> Result<()> {
-        // Create a duplex stream to simulate TcpStream
         let (client, server) = duplex(1024);
 
-        // Write the PING command to the server side of the stream
         let ping_command = b"*1\r\n$4\r\nPING\r\n";
         let mut client = client;
         client.write_all(ping_command).await?;

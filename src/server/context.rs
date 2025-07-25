@@ -62,8 +62,8 @@ impl ServerContext {
             Command::Replconf => sstring_response("OK"),
             Command::ReplconfGetAck(_) => CommandResponse::ReplconfAck,
             Command::Wait {
-                num_replicas,
-                timeout,
+                num_replicas: _,
+                timeout: _,
             } => int_response(self.replicas.count().await),
             Command::Invalid => null_response(),
         }
