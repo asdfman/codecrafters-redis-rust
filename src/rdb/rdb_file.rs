@@ -1,10 +1,7 @@
+use super::length_encoded_value::{get_6_bit_integer, LengthEncodedValue};
 use anyhow::Result;
 use bytes::{Buf, Bytes};
 use hashbrown::HashMap;
-
-use crate::store::Value;
-
-use super::length_encoded_value::{get_6_bit_integer, LengthEncodedValue};
 
 const AUXILIARY_FIELD: u8 = 0xFA;
 const _EXPIRE_MS: u8 = 0xFD;
@@ -28,14 +25,6 @@ pub struct DatabaseSection {
 #[derive(Debug)]
 pub enum RdbValue {
     String(String),
-}
-
-impl From<RdbValue> for Value {
-    fn from(value: RdbValue) -> Self {
-        match value {
-            RdbValue::String(s) => Value::String(s),
-        }
-    }
 }
 
 impl TryFrom<&mut Bytes> for RdbFile {

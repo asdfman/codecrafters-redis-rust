@@ -1,13 +1,12 @@
-use anyhow::Result;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc::Sender;
-
 use crate::{
     protocol::{Data, RedisArray},
     rdb::util::get_empty_rdb_file_bytes,
     server::{context::null, replica::ReplicaManager, state::ServerState},
-    store::{InMemoryStore, Value},
+    store::{store::InMemoryStore, value::Value},
 };
+use anyhow::Result;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc::Sender;
 
 pub async fn keys(pattern: &str, store: &InMemoryStore) -> String {
     let keys = store
@@ -90,21 +89,11 @@ pub async fn type_handler(key: &str, store: &InMemoryStore) -> String {
 pub async fn xadd(
     key: String,
     id: String,
-    entry_key: String,
-    entry_value: String,
-    store: &InMemoryStore,
-) -> String {
-    store
-        .set(
-            key.to_string(),
-            Value::Stream {
-                id: id.clone(),
-                entries: vec![(entry_key, entry_value)],
-            },
-            None,
-        )
-        .await;
-    id
+    entry: (String, String),
+    store: &mut InMemoryStore,
+) -> Result<String> {
+    store.add_stream(key, id.clone(), entry).await?;
+    Ok(id)
 }
 
 pub fn encode_bstring(val: &str) -> String {

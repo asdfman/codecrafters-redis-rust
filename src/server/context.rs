@@ -13,7 +13,7 @@ use crate::{
     },
     protocol::{Data, RedisArray},
     server::{config, state::ServerState},
-    store::InMemoryStore,
+    store::store::InMemoryStore,
 };
 
 use super::{
@@ -79,8 +79,10 @@ impl ServerContext {
                     .as_ref(),
             ),
             Command::XAdd { key, id, entry } => {
-                let response = handlers::xadd(key, id, entry.0, entry.1, &self.store).await;
-                bstring_response(&response)
+                match handlers::xadd(key, id, entry, &mut self.store).await {
+                    Ok(res) => bstring_response(&res),
+                    Err(e) => error_response(&e.to_string()),
+                }
             }
             Command::Invalid | Command::ReplconfAck(_) => null_response(),
         }
@@ -156,4 +158,8 @@ fn null_response() -> CommandResponse {
 
 fn int_response(val: i64) -> CommandResponse {
     CommandResponse::Single(encode_int(val))
+}
+
+fn error_response(err: &str) -> CommandResponse {
+    CommandResponse::Single(String::from(&Data::SimpleError(err.to_string())))
 }

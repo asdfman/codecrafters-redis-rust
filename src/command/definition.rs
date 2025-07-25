@@ -1,7 +1,7 @@
 use super::handlers::get_timestamp;
 use crate::{
     protocol::{Data, RedisArray},
-    store::Value,
+    store::value::Value,
 };
 
 #[derive(Clone, Debug)]

@@ -1,3 +1,5 @@
+use super::value::{Value, ValueWrapper};
+use crate::{rdb::rdb_file::RdbFile, server::config::get_config_value};
 use bytes::Bytes;
 use hashbrown::HashMap;
 use std::{
@@ -5,46 +7,32 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::Mutex;
-
-use crate::{rdb::rdb_file::RdbFile, server::config::get_config_value};
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Value {
-    String(String),
-    Integer(i64),
-    List(Vec<String>),
-    Stream {
-        id: String,
-        entries: Vec<(String, String)>,
-    },
-}
-impl From<String> for Value {
-    fn from(s: String) -> Self {
-        Value::String(s)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ValueWrapper {
-    value: Value,
-    expiry: Option<u64>,
-}
+use tokio::sync::{broadcast, Mutex};
 
 #[derive(Clone, Debug)]
 pub struct InMemoryStore {
-    data: Arc<Mutex<HashMap<String, ValueWrapper>>>,
+    pub data: Arc<Mutex<HashMap<String, ValueWrapper>>>,
+    pub notifier: broadcast::Sender<String>,
 }
 
 impl Default for InMemoryStore {
     fn default() -> Self {
+        let (tx, _) = broadcast::channel(100);
         InMemoryStore::init_from_file().unwrap_or(Self {
             data: Arc::new(Mutex::new(HashMap::new())),
+            notifier: tx,
         })
     }
 }
 
 impl InMemoryStore {
+    fn new(data: HashMap<String, ValueWrapper>) -> Self {
+        let (tx, _) = broadcast::channel(100);
+        Self {
+            data: Arc::new(Mutex::new(data)),
+            notifier: tx,
+        }
+    }
     fn init_from_file() -> Option<Self> {
         let (dir, file_name) = (get_config_value("dir")?, get_config_value("dbfilename")?);
         let mut bytes = read_file(PathBuf::from(dir).join(file_name))?;
@@ -96,9 +84,7 @@ impl InMemoryStore {
                 })
             })
             .collect();
-        Self {
-            data: Arc::new(Mutex::new(map)),
-        }
+        InMemoryStore::new(map)
     }
 }
 

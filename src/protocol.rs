@@ -1,4 +1,4 @@
-use crate::store::Value;
+use crate::store::value::Value;
 
 pub const CRLF: &str = "\r\n";
 pub const CRLF_LEN: usize = 2;
@@ -9,6 +9,7 @@ pub enum Data {
     SStr(String),
     Int(i64),
     Array(RedisArray),
+    SimpleError(String),
 }
 impl Data {
     pub fn deserialize(val: &str) -> (Self, usize) {
@@ -25,6 +26,7 @@ impl From<&Data> for String {
             Data::BStr(s) => format!("${}\r\n{}\r\n", s.len(), s),
             Data::SStr(s) => format!("+{s}\r\n"),
             Data::Int(i) => format!(":{}{}\r\n", if *i < 0 { "-" } else { "+" }, i),
+            Data::SimpleError(e) => format!("-ERR {e}\r\n"),
             _ => panic!("Unsupported data type for conversion to string"),
         }
     }
