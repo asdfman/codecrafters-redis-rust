@@ -92,8 +92,7 @@ pub async fn xadd(
     entry: (String, String),
     store: &mut InMemoryStore,
 ) -> Result<String> {
-    store.add_stream(key, id.clone(), entry).await?;
-    Ok(id)
+    store.add_stream(key, id.clone(), entry).await
 }
 
 pub fn encode_bstring(val: &str) -> String {

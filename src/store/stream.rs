@@ -34,7 +34,7 @@ impl InMemoryStore {
         key: String,
         stream_id: String,
         stream_entry: (String, String),
-    ) -> Result<()> {
+    ) -> Result<String> {
         let mut data = self.data.lock().await;
         let entry = data.entry(key.clone()).or_insert(ValueWrapper {
             value: Value::Stream(BTreeMap::new()),
@@ -43,13 +43,16 @@ impl InMemoryStore {
         let Value::Stream(stream) = &mut entry.value else {
             panic!("Expected a stream value");
         };
-        get_stream_id(
+        let stream_id = get_stream_id(
             StreamId::from(stream_id.as_str()),
             stream.keys().next_back().map(String::as_str),
         )?;
-        stream.entry(stream_id).or_insert(vec![]).push(stream_entry);
+        stream
+            .entry(stream_id.clone())
+            .or_insert(vec![])
+            .push(stream_entry);
         self.notifier.send(key).unwrap_or(0);
-        Ok(())
+        Ok(stream_id)
     }
 }
 
@@ -74,6 +77,9 @@ fn get_stream_id(incoming: StreamId, last: Option<&str>) -> Result<String> {
             if ms < last_ms {
                 bail!(ERR_SMALL)
             }
+            if ms == last_ms {
+                return Ok(format!("{ms}-{}", last_seq + 1));
+            }
             Ok(format!("{ms}-0"))
         }
         StreamId::Generate => {
@@ -93,3 +99,4 @@ fn get_unix_ms() -> u64 {
 const ERR_SMALL: &str =
     "The ID specified in XADD is equal or smaller than the target stream top item";
 const ERR_INVALID: &str = "The ID specified in XADD must be greater than 0-0";
+
