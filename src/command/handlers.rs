@@ -75,6 +75,17 @@ pub async fn wait(replicas: &mut ReplicaManager, min_num_acks: i64, timeout_ms: 
         .expect("Failed to wait for replicas")
 }
 
+pub async fn type_handler(key: &str, store: &InMemoryStore) -> String {
+    match store.get(key).await {
+        Some(value) => match value {
+            Value::String(_) => "string".to_string(),
+            Value::List(_) => "list".to_string(),
+            _ => panic!("Unexpected value type"),
+        },
+        None => "none".to_string(),
+    }
+}
+
 pub fn encode_bstring(val: &str) -> String {
     String::from(&Data::BStr(val.to_string()))
 }

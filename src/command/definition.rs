@@ -26,6 +26,7 @@ pub enum Command {
         num_replicas: i64,
         timeout: u64,
     },
+    Type(String),
     Invalid,
 }
 
@@ -87,6 +88,7 @@ impl From<&[Data]> for Command {
                 num_replicas: num.parse::<i64>().unwrap(),
                 timeout: timeout.parse::<u64>().unwrap(),
             },
+            ("TYPE", [Data::BStr(key)]) => Command::Type(key.into()),
             _ => Command::Invalid,
         }
     }

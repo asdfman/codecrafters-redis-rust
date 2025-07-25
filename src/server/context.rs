@@ -73,6 +73,11 @@ impl ServerContext {
                 num_replicas,
                 timeout,
             } => int_response(handlers::wait(&mut self.replicas, num_replicas, timeout).await),
+            Command::Type(key) => sstring_response(
+                handlers::type_handler(key.as_str(), &self.store)
+                    .await
+                    .as_ref(),
+            ),
             Command::Invalid | Command::ReplconfAck(_) => null_response(),
         }
     }
