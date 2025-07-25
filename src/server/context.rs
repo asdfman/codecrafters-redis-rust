@@ -1,4 +1,9 @@
-use tokio::{io::AsyncWriteExt, net::TcpStream, sync::mpsc};
+use std::sync::Arc;
+
+use tokio::{
+    net::TcpStream,
+    sync::{mpsc, Mutex},
+};
 
 use crate::{
     command::{
@@ -11,7 +16,10 @@ use crate::{
     store::InMemoryStore,
 };
 
-use super::replica::ReplicaManager;
+use super::{
+    replica::{ReplicaManager, ReplicaState},
+    stream_reader::StreamReader,
+};
 
 const NULL: &str = "$-1\r\n";
 pub fn null() -> String {
@@ -34,7 +42,7 @@ impl ServerContext {
         }
     }
 
-    pub async fn execute_command(&self, request: Command) -> CommandResponse {
+    pub async fn execute_command(&mut self, request: Command) -> CommandResponse {
         match request {
             Command::Ping => sstring_response("PONG"),
             Command::Echo(val) => bstring_response(&val),
@@ -62,26 +70,66 @@ impl ServerContext {
             Command::Replconf => sstring_response("OK"),
             Command::ReplconfGetAck(_) => CommandResponse::ReplconfAck,
             Command::Wait {
-                num_replicas: _,
-                timeout: _,
-            } => int_response(self.replicas.count().await),
-            Command::Invalid => null_response(),
+                num_replicas,
+                timeout,
+            } => int_response(handlers::wait(&mut self.replicas, num_replicas, timeout).await),
+            Command::Invalid | Command::ReplconfAck(_) => null_response(),
         }
     }
 
-    pub async fn add_replica(&self, mut reader: TcpStream) {
-        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(100);
-        tokio::spawn(async move {
-            while let Some(data) = rx.recv().await {
-                if let Err(e) = reader.write_all(&data).await {
-                    eprintln!("Failed to write response to replica: {e}");
-                }
-            }
-        });
+    pub async fn add_replica(&mut self, reader: StreamReader<TcpStream>) {
+        let (tx, rx) = mpsc::channel::<Vec<u8>>(100);
+        let replica_id = uuid::Uuid::new_v4().to_string();
+        let replica_state = Arc::new(Mutex::new(ReplicaState::new(tx.clone())));
+        let state_clone = replica_state.clone();
         if handlers::psync(&tx, &self.state).await.is_err() {
             eprintln!("Replica sync failed");
         }
-        self.replicas.add_channel(tx).await;
+        self.replicas.add_channel(replica_id, replica_state);
+
+        tokio::spawn(async move {
+            replica_stream_handler(reader, rx, state_clone).await;
+        });
+    }
+}
+
+async fn replica_stream_handler(
+    mut reader: StreamReader<TcpStream>,
+    mut rx: mpsc::Receiver<Vec<u8>>,
+    state: Arc<Mutex<ReplicaState>>,
+) {
+    loop {
+        tokio::select! {
+            Some(data) = rx.recv() => {
+                if let Err(e) = reader.write_stream(&data).await {
+                    eprintln!("Failed to write response to replica: {e}");
+                    break;
+                }
+            }
+            result = reader.read_redis_data() => {
+                match result {
+                    Ok(data) => process_response(Ok(data), state.clone()).await,
+                    Err(e) => {
+                        eprintln!("Failed to read response from replica: {e}");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn process_response(result: anyhow::Result<Data>, state: Arc<Mutex<ReplicaState>>) {
+    match result {
+        Ok(Data::Array(response)) => {
+            if let Command::ReplconfAck(offset) = Command::from(response.0.as_slice()) {
+                state.lock().await.update_latest_offset(offset);
+            }
+        }
+        Ok(data) => eprintln!("Unexpected response received from replica: {data:?}"),
+        Err(e) => {
+            eprintln!("Failed to read response from replica: {e}");
+        }
     }
 }
 

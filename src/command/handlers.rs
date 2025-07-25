@@ -5,7 +5,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     protocol::{Data, RedisArray},
     rdb::util::get_empty_rdb_file_bytes,
-    server::{context::null, state::ServerState},
+    server::{context::null, replica::ReplicaManager, state::ServerState},
     store::{InMemoryStore, Value},
 };
 
@@ -66,6 +66,13 @@ pub fn info(state: &ServerState) -> String {
         })
         .map(|s| encode_bstring(&s))
         .unwrap_or_default()
+}
+
+pub async fn wait(replicas: &mut ReplicaManager, min_num_acks: i64, timeout_ms: u64) -> i64 {
+    replicas
+        .wait(min_num_acks, std::time::Duration::from_millis(timeout_ms))
+        .await
+        .expect("Failed to wait for replicas")
 }
 
 pub fn encode_bstring(val: &str) -> String {

@@ -30,7 +30,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
         }
     }
 
-    pub async fn read_command(&mut self) -> Result<Data> {
+    pub async fn read_redis_data(&mut self) -> Result<Data> {
         self.current_command_processed_bytes = 0;
         loop {
             loop {
@@ -205,10 +205,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
             bail!("Failed to parse simple string from buffer");
         };
         Ok(simple_string)
-    }
-
-    pub fn take_stream(self) -> T {
-        self.stream
     }
 
     pub fn reset_processed_bytes(&mut self) {

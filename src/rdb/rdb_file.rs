@@ -45,7 +45,6 @@ impl TryFrom<&mut Bytes> for RdbFile {
         bytes.advance(1);
         let _metadata = split_until_value(bytes, DB_SELECTOR).to_vec();
         let mut sections = Vec::new();
-        print_mixed_bytes(bytes.chunk());
 
         while bytes.has_remaining() {
             if bytes.chunk()[0] != DB_SELECTOR {
@@ -120,29 +119,4 @@ fn split_until_value(bytes: &mut Bytes, value: u8) -> Bytes {
         .position(|&b| b == value)
         .unwrap_or(bytes.len());
     bytes.split_to(len)
-}
-
-fn print_mixed_bytes(bytes: &[u8]) {
-    let mut i = 0;
-    while i < bytes.len() {
-        // Try to find the longest valid UTF-8 sequence
-        let mut len = 0;
-        for j in i..bytes.len() {
-            if std::str::from_utf8(&bytes[i..=j]).is_ok() {
-                len = j - i + 1;
-            } else {
-                break;
-            }
-        }
-        if len > 0 {
-            // Print valid UTF-8 as text
-            let s = std::str::from_utf8(&bytes[i..i + len]).unwrap();
-            print!("{s}");
-            i += len;
-        } else {
-            // Print single byte as hex using the hex crate
-            print!("\\x{}", hex::encode(&bytes[i..i + 1]));
-            i += 1;
-        }
-    }
 }

@@ -21,8 +21,9 @@ pub enum Command {
     Psync(String, String),
     Replconf,
     ReplconfGetAck(String),
+    ReplconfAck(usize),
     Wait {
-        num_replicas: u64,
+        num_replicas: i64,
         timeout: u64,
     },
     Invalid,
@@ -76,9 +77,14 @@ impl From<&[Data]> for Command {
             {
                 Command::ReplconfGetAck(arg.into())
             }
+            ("REPLCONF", [Data::BStr(subcmd), Data::BStr(offset), ..])
+                if subcmd.eq_ignore_ascii_case("ACK") =>
+            {
+                Command::ReplconfAck(offset.parse::<usize>().unwrap())
+            }
             ("REPLCONF", [..]) => Command::Replconf,
             ("WAIT", [Data::BStr(num), Data::BStr(timeout)]) => Command::Wait {
-                num_replicas: num.parse::<u64>().unwrap(),
+                num_replicas: num.parse::<i64>().unwrap(),
                 timeout: timeout.parse::<u64>().unwrap(),
             },
             _ => Command::Invalid,

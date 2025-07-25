@@ -18,7 +18,7 @@ mod tests {
 
         let mut reader = StreamReader::new(server, false);
 
-        let result = reader.read_command().await?;
+        let result = reader.read_redis_data().await?;
 
         let Data::Array(RedisArray(array)) = result else {
             panic!("Expected a RedisArray");
@@ -45,15 +45,15 @@ mod tests {
         reader.expect_bytes().await?;
 
         // read the SET commands
-        let result1 = reader.read_command().await?;
+        let result1 = reader.read_redis_data().await?;
         let Data::Array(RedisArray(array1)) = result1 else {
             panic!("Expected a RedisArray");
         };
-        let result2 = reader.read_command().await?;
+        let result2 = reader.read_redis_data().await?;
         let Data::Array(RedisArray(array2)) = result2 else {
             panic!("Expected a RedisArray");
         };
-        let result3 = reader.read_command().await?;
+        let result3 = reader.read_redis_data().await?;
         let Data::Array(RedisArray(array3)) = result3 else {
             panic!("Expected a RedisArray");
         };
@@ -84,7 +84,7 @@ mod tests {
 
         let mut reader = StreamReader::new(server, false);
 
-        let result1 = reader.read_command().await?;
+        let result1 = reader.read_redis_data().await?;
         let Data::Array(RedisArray(array1)) = result1 else {
             panic!("Expected a RedisArray for first command");
         };
@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(key1, "foo");
         assert_eq!(value1, "123");
 
-        let result2 = reader.read_command().await?;
+        let result2 = reader.read_redis_data().await?;
         let Data::Array(RedisArray(array2)) = result2 else {
             panic!("Expected a RedisArray for second command");
         };
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(key2, "bar");
         assert_eq!(value2, "456");
 
-        let result3 = reader.read_command().await?;
+        let result3 = reader.read_redis_data().await?;
         let Data::Array(RedisArray(array3)) = result3 else {
             panic!("Expected a RedisArray for third command");
         };
