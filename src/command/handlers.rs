@@ -104,9 +104,14 @@ pub async fn xrange(
     store: &InMemoryStore,
 ) -> Result<CommandResponse> {
     let stream = store.get_stream(&key).await?;
+    let range_iter = match (start.as_str(), end.as_str()) {
+        ("-", "+") => stream.range::<String, _>(..),
+        ("-", _) => stream.range(..=end),
+        (_, "+") => stream.range(start..),
+        _ => stream.range(start..=end),
+    };
     let arrays = &Data::Array(
-        stream
-            .range(start..=end)
+        range_iter
             .map(|(id, entries)| {
                 vec![
                     Data::BStr(id.clone()),
