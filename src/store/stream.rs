@@ -2,6 +2,7 @@ use super::{
     store::InMemoryStore,
     value::{Value, ValueWrapper},
 };
+use crate::command::stream_handlers::{OwnedStreamData, StreamFilter};
 use anyhow::{bail, Result};
 use std::{
     collections::BTreeMap,
@@ -61,6 +62,29 @@ impl InMemoryStore {
         } else {
             bail!("Key not found or not a stream");
         }
+    }
+
+    pub async fn get_filtered_streams(&self, filters: Vec<StreamFilter>) -> Vec<OwnedStreamData> {
+        let guard = self.data.lock().await;
+        let mut streams = vec![];
+        for StreamFilter { key, range } in filters {
+            if let Some(Value::Stream(stream)) = guard.get(&key).map(|v| &v.value) {
+                let entries = stream
+                    .range(range)
+                    .map(|(id, entries)| {
+                        (
+                            id.clone(),
+                            entries
+                                .iter()
+                                .map(|(field, value)| (field.clone(), value.clone()))
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect();
+                streams.push(OwnedStreamData { key, entries });
+            }
+        }
+        streams
     }
 }
 

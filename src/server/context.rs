@@ -78,15 +78,16 @@ impl ServerContext {
                     .await
                     .as_ref(),
             ),
-            Command::XAdd { key, id, entry } => {
-                match handlers::xadd(key, id, entry, &mut self.store).await {
-                    Ok(res) => bstring_response(&res),
-                    Err(e) => error_response(&e.to_string()),
-                }
-            }
+            Command::XAdd { key, id, entry } => match self.store.add_stream(key, id, entry).await {
+                Ok(res) => bstring_response(&res),
+                Err(e) => error_response(&e.to_string()),
+            },
             Command::XRange { key, start, end } => handlers::xrange(key, start, end, &self.store)
                 .await
-                .unwrap_or_else(|_| null_response()),
+                .unwrap_or(null_response()),
+            Command::XRead { streams, block } => handlers::xread(streams, block, &self.store)
+                .await
+                .unwrap_or(null_response()),
             Command::Invalid | Command::ReplconfAck(_) => null_response(),
         }
     }

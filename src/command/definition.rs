@@ -37,6 +37,10 @@ pub enum Command {
         start: String,
         end: String,
     },
+    XRead {
+        streams: Vec<(String, String)>,
+        block: Option<u64>,
+    },
     Invalid,
 }
 
@@ -112,9 +116,32 @@ impl From<&[Data]> for Command {
                 start: start.into(),
                 end: end.into(),
             },
+            ("XREAD", ..) => parse_xread(val),
             _ => Command::Invalid,
         }
     }
+}
+
+fn parse_xread(val: &[Data]) -> Command {
+    let mut stream_start = 2usize;
+    let block = match &val[1..2] {
+        [Data::BStr(arg), Data::BStr(ms)] if arg.eq_ignore_ascii_case("BLOCK") => {
+            stream_start = 4;
+            Some(ms.parse::<u64>().unwrap())
+        }
+        _ => None,
+    };
+    let mid = val[stream_start..].len() / 2;
+    let (left, right) = val[stream_start..].split_at(mid);
+    let streams = left
+        .iter()
+        .zip(right.iter())
+        .filter_map(|(l, r)| match (l, r) {
+            (Data::BStr(stream), Data::BStr(id)) => Some((stream.into(), id.into())),
+            _ => None,
+        })
+        .collect();
+    Command::XRead { streams, block }
 }
 
 fn get_raw_array_command(val: &[Data]) -> String {

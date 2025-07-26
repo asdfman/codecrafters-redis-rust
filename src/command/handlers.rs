@@ -1,14 +1,18 @@
+use super::{
+    response::CommandResponse,
+    stream_handlers::{map_xrange_response, StreamFilter},
+};
 use crate::{
+    command::stream_handlers::map_xread_response,
     protocol::{Data, RedisArray},
     rdb::util::get_empty_rdb_file_bytes,
     server::{context::null, replica::ReplicaManager, state::ServerState},
     store::{store::InMemoryStore, value::Value},
 };
-use anyhow::Result;
+use anyhow::{bail, Result};
+use std::ops::Bound::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::Sender;
-
-use super::response::CommandResponse;
 
 pub async fn keys(pattern: &str, store: &InMemoryStore) -> String {
     let keys = store
@@ -88,13 +92,21 @@ pub async fn type_handler(key: &str, store: &InMemoryStore) -> String {
     }
 }
 
-pub async fn xadd(
-    key: String,
-    id: String,
-    entry: (String, String),
-    store: &mut InMemoryStore,
-) -> Result<String> {
-    store.add_stream(key, id.clone(), entry).await
+pub async fn xread(
+    streams: Vec<(String, String)>,
+    _block: Option<u64>,
+    store: &InMemoryStore,
+) -> Result<CommandResponse> {
+    let key_ranges = streams
+        .into_iter()
+        .map(|(key, id)| StreamFilter {
+            key,
+            range: (Excluded(id), Unbounded),
+        })
+        .collect();
+    let filtered_stream = store.get_filtered_streams(key_ranges).await;
+    let arrays = map_xread_response(filtered_stream);
+    Ok(CommandResponse::Single(String::from(&arrays)))
 }
 
 pub async fn xrange(
@@ -103,30 +115,19 @@ pub async fn xrange(
     end: String,
     store: &InMemoryStore,
 ) -> Result<CommandResponse> {
-    let stream = store.get_stream(&key).await?;
-    let range_iter = match (start.as_str(), end.as_str()) {
-        ("-", "+") => stream.range::<String, _>(..),
-        ("-", _) => stream.range(..=end),
-        (_, "+") => stream.range(start..),
-        _ => stream.range(start..=end),
+    let range = match (start.as_str(), end.as_str()) {
+        ("-", "+") => (Unbounded, Unbounded),
+        ("-", _) => (Unbounded, Included(end)),
+        (_, "+") => (Included(start), Unbounded),
+        _ => (Included(start), Included(end)),
     };
-    let arrays = &Data::Array(
-        range_iter
-            .map(|(id, entries)| {
-                vec![
-                    Data::BStr(id.clone()),
-                    Data::Array(
-                        entries
-                            .iter()
-                            .flat_map(|(k, v)| vec![Data::BStr(k.clone()), Data::BStr(v.clone())])
-                            .collect::<Vec<_>>(),
-                    ),
-                ]
-            })
-            .map(Data::Array)
-            .collect::<Vec<_>>(),
-    );
-    Ok(CommandResponse::Single(arrays.into()))
+    let key_ranges = vec![StreamFilter { key, range }];
+    let filtered_stream = store.get_filtered_streams(key_ranges).await;
+    let Some(stream) = filtered_stream.into_iter().next() else {
+        bail!("No stream found for the given key");
+    };
+    let arrays = map_xrange_response(stream.entries);
+    Ok(CommandResponse::Single(String::from(&arrays)))
 }
 
 pub fn encode_bstring(val: &str) -> String {
