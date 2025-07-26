@@ -84,6 +84,9 @@ impl ServerContext {
                     Err(e) => error_response(&e.to_string()),
                 }
             }
+            Command::XRange { key, start, end } => handlers::xrange(key, start, end, &self.store)
+                .await
+                .unwrap_or_else(|_| null_response()),
             Command::Invalid | Command::ReplconfAck(_) => null_response(),
         }
     }
@@ -133,7 +136,7 @@ async fn replica_stream_handler(
 async fn process_response(result: anyhow::Result<Data>, state: Arc<Mutex<ReplicaState>>) {
     match result {
         Ok(Data::Array(response)) => {
-            if let Command::ReplconfAck(offset) = Command::from(response.0.as_slice()) {
+            if let Command::ReplconfAck(offset) = Command::from(response.as_slice()) {
                 state.lock().await.update_latest_offset(offset);
             }
         }

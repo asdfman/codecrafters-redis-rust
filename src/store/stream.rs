@@ -54,6 +54,14 @@ impl InMemoryStore {
         self.notifier.send(key).unwrap_or(0);
         Ok(stream_id)
     }
+
+    pub async fn get_stream(&self, key: &str) -> Result<BTreeMap<String, Vec<(String, String)>>> {
+        if let Some(Value::Stream(stream)) = self.data.lock().await.get(key).map(|v| &v.value) {
+            Ok(stream.clone())
+        } else {
+            bail!("Key not found or not a stream");
+        }
+    }
 }
 
 fn get_stream_id(incoming: StreamId, last: Option<&str>) -> Result<String> {
@@ -99,4 +107,3 @@ fn get_unix_ms() -> u64 {
 const ERR_SMALL: &str =
     "The ID specified in XADD is equal or smaller than the target stream top item";
 const ERR_INVALID: &str = "The ID specified in XADD must be greater than 0-0";
-

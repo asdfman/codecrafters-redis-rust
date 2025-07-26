@@ -59,7 +59,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
 
     fn add_to_array(&mut self, data: Data) {
         if let Some(Data::Array(arr)) = self.temp_resp_array.as_mut() {
-            arr.0.push(data);
+            arr.push(data);
             self.expected_array_items -= 1;
         }
     }
@@ -80,7 +80,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> StreamReader<T> {
         let (data_len, data_start) = get_len(&self.buffer)?;
         self.advance(data_start);
         self.expected_array_items = data_len;
-        Some(Data::Array(RedisArray(vec![])))
+        Some(Data::Array(vec![]))
     }
 
     fn parse_bulk_string(&mut self) -> Option<Data> {

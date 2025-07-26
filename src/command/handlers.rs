@@ -8,6 +8,8 @@ use anyhow::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::Sender;
 
+use super::response::CommandResponse;
+
 pub async fn keys(pattern: &str, store: &InMemoryStore) -> String {
     let keys = store
         .get_keys(pattern)
@@ -93,6 +95,33 @@ pub async fn xadd(
     store: &mut InMemoryStore,
 ) -> Result<String> {
     store.add_stream(key, id.clone(), entry).await
+}
+
+pub async fn xrange(
+    key: String,
+    start: String,
+    end: String,
+    store: &InMemoryStore,
+) -> Result<CommandResponse> {
+    let stream = store.get_stream(&key).await?;
+    let arrays = &Data::Array(
+        stream
+            .range(start..=end)
+            .map(|(id, entries)| {
+                vec![
+                    Data::BStr(id.clone()),
+                    Data::Array(
+                        entries
+                            .iter()
+                            .flat_map(|(k, v)| vec![Data::BStr(k.clone()), Data::BStr(v.clone())])
+                            .collect::<Vec<_>>(),
+                    ),
+                ]
+            })
+            .map(Data::Array)
+            .collect::<Vec<_>>(),
+    );
+    Ok(CommandResponse::Single(arrays.into()))
 }
 
 pub fn encode_bstring(val: &str) -> String {

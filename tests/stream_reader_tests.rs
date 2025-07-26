@@ -2,7 +2,6 @@
 mod tests {
     use anyhow::Result;
     use codecrafters_redis::protocol::Data;
-    use codecrafters_redis::protocol::RedisArray;
     use codecrafters_redis::server::stream_reader::StreamReader;
     use tokio::io::duplex;
     use tokio::io::AsyncWriteExt;
@@ -20,7 +19,7 @@ mod tests {
 
         let result = reader.read_redis_data().await?;
 
-        let Data::Array(RedisArray(array)) = result else {
+        let Data::Array(array) = result else {
             panic!("Expected a RedisArray");
         };
         let Data::BStr(command) = array.first().unwrap() else {
@@ -46,15 +45,15 @@ mod tests {
 
         // read the SET commands
         let result1 = reader.read_redis_data().await?;
-        let Data::Array(RedisArray(array1)) = result1 else {
+        let Data::Array(array1) = result1 else {
             panic!("Expected a RedisArray");
         };
         let result2 = reader.read_redis_data().await?;
-        let Data::Array(RedisArray(array2)) = result2 else {
+        let Data::Array(array2) = result2 else {
             panic!("Expected a RedisArray");
         };
         let result3 = reader.read_redis_data().await?;
-        let Data::Array(RedisArray(array3)) = result3 else {
+        let Data::Array(array3) = result3 else {
             panic!("Expected a RedisArray");
         };
 
@@ -85,7 +84,7 @@ mod tests {
         let mut reader = StreamReader::new(server, false);
 
         let result1 = reader.read_redis_data().await?;
-        let Data::Array(RedisArray(array1)) = result1 else {
+        let Data::Array(array1) = result1 else {
             panic!("Expected a RedisArray for first command");
         };
         assert_eq!(
@@ -107,7 +106,7 @@ mod tests {
         assert_eq!(value1, "123");
 
         let result2 = reader.read_redis_data().await?;
-        let Data::Array(RedisArray(array2)) = result2 else {
+        let Data::Array(array2) = result2 else {
             panic!("Expected a RedisArray for second command");
         };
         assert_eq!(
@@ -129,7 +128,7 @@ mod tests {
         assert_eq!(value2, "456");
 
         let result3 = reader.read_redis_data().await?;
-        let Data::Array(RedisArray(array3)) = result3 else {
+        let Data::Array(array3) = result3 else {
             panic!("Expected a RedisArray for third command");
         };
         assert_eq!(

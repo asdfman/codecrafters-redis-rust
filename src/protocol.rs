@@ -8,7 +8,7 @@ pub enum Data {
     BStr(String),
     SStr(String),
     Int(i64),
-    Array(RedisArray),
+    Array(Vec<Data>),
     SimpleError(String),
 }
 impl Data {
@@ -27,7 +27,14 @@ impl From<&Data> for String {
             Data::SStr(s) => format!("+{s}\r\n"),
             Data::Int(i) => format!(":{}{}\r\n", if *i < 0 { "-" } else { "+" }, i),
             Data::SimpleError(e) => format!("-ERR {e}\r\n"),
-            _ => panic!("Unsupported data type for conversion to string"),
+            Data::Array(arr) => {
+                let mut result = String::new();
+                result.push_str(&format!("*{}\r\n", arr.len()));
+                for item in arr {
+                    result.push_str(String::from(item).as_str());
+                }
+                result
+            }
         }
     }
 }

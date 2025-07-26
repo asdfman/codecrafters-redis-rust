@@ -32,13 +32,18 @@ pub enum Command {
         id: String,
         entry: (String, String),
     },
+    XRange {
+        key: String,
+        start: String,
+        end: String,
+    },
     Invalid,
 }
 
 impl From<Data> for Command {
     fn from(val: Data) -> Self {
         match val {
-            Data::Array(arr) => Command::from(arr.0.as_slice()),
+            Data::Array(arr) => Command::from(arr.as_slice()),
             _ => Command::Invalid,
         }
     }
@@ -101,6 +106,11 @@ impl From<&[Data]> for Command {
                 key: key.into(),
                 id: id.into(),
                 entry: (entry_key.into(), entry_value.into()),
+            },
+            ("XRANGE", [Data::BStr(key), Data::BStr(start), Data::BStr(end)]) => Command::XRange {
+                key: key.into(),
+                start: start.into(),
+                end: end.into(),
             },
             _ => Command::Invalid,
         }
