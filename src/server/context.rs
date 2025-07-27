@@ -103,8 +103,21 @@ impl ServerContext {
                     }
                 }
             }
-            Command::Invalid | Command::ReplconfAck(_) => null_response(),
+            Command::Multi => sstring_response("OK"),
+            Command::Exec => error_response("EXEC without multi"),
+            Command::Invalid | Command::ReplconfAck(_) | Command::Transaction(_) => null_response(),
         }
+    }
+
+    pub async fn process_transaction(&self, commands: Vec<Command>) -> CommandResponse {
+        let mut responses = Vec::new();
+        for command in commands {
+            if let CommandResponse::Single(res) = self.execute_command(command).await {
+                responses.push(res);
+            }
+        }
+
+        CommandResponse::Multiple(responses)
     }
 
     pub async fn add_replica(&self, reader: StreamReader<TcpStream>) {

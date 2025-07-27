@@ -42,7 +42,10 @@ pub enum Command {
         block: Option<u64>,
     },
     Incr(String),
+    Multi,
+    Exec,
     Invalid,
+    Transaction(Vec<Command>),
 }
 
 impl From<Data> for Command {
@@ -123,6 +126,8 @@ impl From<&[Data]> for Command {
             },
             ("XREAD", ..) => parse_xread(val),
             ("INCR", [Data::BStr(key)]) => Command::Incr(key.into()),
+            ("MULTI", ..) => Command::Multi,
+            ("EXEC", ..) => Command::Exec,
             _ => Command::Invalid,
         }
     }
