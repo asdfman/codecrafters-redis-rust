@@ -6,10 +6,16 @@ use crate::command::stream_handlers::{StreamData, StreamFilter};
 use anyhow::{bail, Result};
 use std::{
     collections::BTreeMap,
+    ops::Bound,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
+
+pub struct StreamQueryResult {
+    pub data: Option<Vec<StreamData>>,
+    pub max_ids: Vec<(String, Option<String>)>,
+}
 
 enum StreamId {
     Explicit(u64, u64),
@@ -64,14 +70,18 @@ impl InMemoryStore {
         }
     }
 
-    pub async fn get_filtered_streams(
-        &self,
-        filters: Vec<StreamFilter>,
-    ) -> Option<Vec<StreamData>> {
+    pub async fn get_filtered_streams(&self, filters: Vec<StreamFilter>) -> StreamQueryResult {
         let guard = self.data.lock().await;
         let mut streams = vec![];
+        let mut max_ids = vec![];
         for StreamFilter { key, range } in filters {
             if let Some(Value::Stream(stream)) = guard.get(&key).map(|v| &v.value) {
+                if let (Bound::Excluded(id), _) = &range {
+                    if id == "$" {
+                        max_ids.push((key, stream.keys().next_back().cloned()));
+                        continue;
+                    }
+                }
                 let entries = stream
                     .range(range)
                     .map(|(id, entries)| {
@@ -90,10 +100,9 @@ impl InMemoryStore {
                 streams.push(StreamData { key, entries });
             }
         }
-        if streams.is_empty() {
-            None
-        } else {
-            Some(streams)
+        StreamQueryResult {
+            data: Some(streams).filter(|v| !v.is_empty()),
+            max_ids,
         }
     }
 
@@ -148,7 +157,7 @@ fn get_stream_id(incoming: StreamId, last: Option<&str>) -> Result<String> {
     }
 }
 
-fn get_unix_ms() -> u64 {
+pub fn get_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

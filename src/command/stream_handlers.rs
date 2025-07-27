@@ -1,5 +1,8 @@
 use super::response::CommandResponse;
-use crate::{protocol::Data, store::core::InMemoryStore};
+use crate::{
+    protocol::Data,
+    store::{core::InMemoryStore, stream::StreamQueryResult},
+};
 use std::ops::Bound::{self, *};
 
 #[derive(Debug)]
@@ -26,25 +29,45 @@ pub async fn xread(
         })
         .collect();
     let filtered_streams = match (store.get_filtered_streams(key_ranges).await, block) {
-        (Some(data), _) => Some(data),
-        (None, None) => None,
-        (None, Some(timeout)) => {
+        (
+            StreamQueryResult {
+                data: Some(data), ..
+            },
+            None,
+            ..,
+        ) => Some(data),
+        (
+            StreamQueryResult {
+                data: None,
+                max_ids,
+            },
+            Some(timeout),
+        ) => {
             let updated_key = wait_for_new_data(
                 streams.iter().map(|f| f.0.clone()).collect(),
                 timeout,
                 store,
             )
             .await?;
-            let id = streams
+            let mut id = streams
                 .iter()
-                .find_map(|(key, id)| if key == &updated_key { Some(id) } else { None })?;
+                .find_map(|(key, id)| if key == &updated_key { Some(id) } else { None })
+                .cloned()?;
+            if id == "$" {
+                id = max_ids
+                    .into_iter()
+                    .find_map(|(key, id)| if key == updated_key { id } else { None })
+                    .unwrap_or("0-0".to_string());
+            }
             store
                 .get_filtered_streams(vec![StreamFilter {
                     key: updated_key,
                     range: (Excluded(id.clone()), Unbounded),
                 }])
                 .await
+                .data
         }
+        _ => None,
     }?;
     let arrays = map_xread_response(filtered_streams);
     Some(CommandResponse::Single(String::from(&arrays)))
@@ -92,7 +115,7 @@ pub async fn xrange(
     };
     let key_ranges = vec![StreamFilter { key, range }];
     let filtered_stream = store.get_filtered_streams(key_ranges).await;
-    let stream = filtered_stream?.into_iter().next()?;
+    let stream = filtered_stream.data?.into_iter().next()?;
     let arrays = map_xrange_response(stream.entries);
     Some(CommandResponse::Single(String::from(&arrays)))
 }
