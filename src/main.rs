@@ -93,10 +93,16 @@ async fn handle_connection(
                 in_transaction = false;
                 continue;
             }
-            Command::Discard => {
+            Command::Discard if in_transaction => {
                 in_transaction = false;
                 transaction_commands.clear();
                 reader.write_stream(encode_sstring("OK").as_bytes()).await?;
+                continue;
+            }
+            Command::Discard if !in_transaction => {
+                let response =
+                    String::from(&Data::SimpleError("DISCARD without MULTI".to_string()));
+                reader.write_stream(response.as_bytes()).await?;
                 continue;
             }
             _ if in_transaction => {
