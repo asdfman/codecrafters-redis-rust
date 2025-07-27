@@ -116,7 +116,6 @@ impl ServerContext {
                 responses.push(res);
             }
         }
-
         CommandResponse::Multiple(responses)
     }
 
@@ -195,7 +194,7 @@ fn int_response(val: i64) -> CommandResponse {
     CommandResponse::Single(encode_int(val))
 }
 
-fn error_response(err: &str) -> CommandResponse {
+pub fn error_response(err: &str) -> CommandResponse {
     CommandResponse::Single(String::from(&Data::SimpleError(err.to_string())))
 }
 

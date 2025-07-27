@@ -1,6 +1,7 @@
 use anyhow::{bail, Result};
 use codecrafters_redis::{
-    command::{core::Command, response::CommandResponse},
+    command::{core::Command, handlers::encode_sstring, response::CommandResponse},
+    protocol::Data,
     server::{
         config::get_config_value, context::ServerContext, replica::init_replica,
         stream_reader::StreamReader,
@@ -65,11 +66,45 @@ async fn handle_connection(
     context: ServerContext,
 ) -> Result<()> {
     let mut reader = StreamReader::new(stream, false);
+    let mut transaction_commands = vec![];
+    let mut in_transaction = false;
     loop {
         let data = reader.read_redis_data().await?;
+        let command: Command = data.into();
+        match &command {
+            Command::Multi => {
+                in_transaction = true;
+                reader.write_stream(encode_sstring("OK").as_bytes()).await?;
+                continue;
+            }
+            Command::Exec if !in_transaction => {
+                let response = String::from(&Data::SimpleError("EXEC without MULTI".to_string()));
+                reader.write_stream(response.as_bytes()).await?;
+                continue;
+            }
+            Command::Exec => {
+                let response = context
+                    .process_transaction(transaction_commands.clone())
+                    .await;
+                reader
+                    .write_stream(String::from(response).as_bytes())
+                    .await?;
+                transaction_commands.clear();
+                in_transaction = false;
+                continue;
+            }
+            _ if in_transaction => {
+                transaction_commands.push(command.clone());
+                reader
+                    .write_stream(encode_sstring("QUEUED").as_bytes())
+                    .await?;
+                continue;
+            }
+            _ => (),
+        }
 
         let (result_tx, result_rx) = oneshot::channel();
-        tx.send((data.into(), Some(result_tx))).await?;
+        tx.send((command, Some(result_tx))).await?;
 
         match result_rx.await? {
             CommandResponse::Stream => {
