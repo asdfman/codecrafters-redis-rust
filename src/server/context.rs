@@ -105,7 +105,7 @@ impl ServerContext {
             }
             Command::Multi => sstring_response("OK"),
             Command::Exec => error_response("EXEC without multi"),
-            Command::Invalid | Command::ReplconfAck(_) | Command::Transaction(_) => null_response(),
+            _ => null_response(),
         }
     }
 

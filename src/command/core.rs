@@ -45,6 +45,7 @@ pub enum Command {
     Multi,
     Exec,
     Invalid,
+    Discard,
     Transaction(Vec<Command>),
 }
 
@@ -128,6 +129,7 @@ impl From<&[Data]> for Command {
             ("INCR", [Data::BStr(key)]) => Command::Incr(key.into()),
             ("MULTI", ..) => Command::Multi,
             ("EXEC", ..) => Command::Exec,
+            ("DISCARD", ..) => Command::Discard,
             _ => Command::Invalid,
         }
     }
