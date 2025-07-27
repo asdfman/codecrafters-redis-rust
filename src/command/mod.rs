@@ -1,4 +1,4 @@
-pub mod definition;
+pub mod core;
 pub mod handlers;
 pub mod response;
 pub mod send;

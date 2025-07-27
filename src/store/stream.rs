@@ -1,37 +1,37 @@
 use super::{
-    store::InMemoryStore,
+    core::InMemoryStore,
     value::{Value, ValueWrapper},
 };
-use crate::command::stream_handlers::{OwnedStreamData, StreamFilter};
+use crate::command::stream_handlers::{StreamData, StreamFilter};
 use anyhow::{bail, Result};
 use std::{
     collections::BTreeMap,
     time::{SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::mpsc::Sender;
+use uuid::Uuid;
 
 enum StreamId {
     Explicit(u64, u64),
     TimeOnly(u64),
     Generate,
 }
-impl From<&str> for StreamId {
-    fn from(s: &str) -> Self {
+impl TryFrom<&str> for StreamId {
+    type Error = anyhow::Error;
+    fn try_from(s: &str) -> Result<Self> {
         let parts: Vec<_> = s.split('-').collect();
         match parts.as_slice() {
-            ["*"] => Self::Generate,
-            [val, "*"] => Self::TimeOnly(val.parse().expect("Invalid timestamp")),
-            [ms, seq] => Self::Explicit(
-                ms.parse().expect("Invalid millisecond value"),
-                seq.parse().expect("Invalid sequence value"),
-            ),
-            _ => panic!("Invalid StreamId format"),
+            ["*"] => Ok(Self::Generate),
+            [val, "*"] => Ok(Self::TimeOnly(val.parse()?)),
+            [ms, seq] => Ok(Self::Explicit(ms.parse()?, seq.parse()?)),
+            _ => bail!("Invalid StreamId format"),
         }
     }
 }
 
 impl InMemoryStore {
     pub async fn add_stream(
-        &mut self,
+        &self,
         key: String,
         stream_id: String,
         stream_entry: (String, String),
@@ -42,17 +42,17 @@ impl InMemoryStore {
             expiry: None,
         });
         let Value::Stream(stream) = &mut entry.value else {
-            panic!("Expected a stream value");
+            bail!("Key is not a stream");
         };
         let stream_id = get_stream_id(
-            StreamId::from(stream_id.as_str()),
+            StreamId::try_from(stream_id.as_str())?,
             stream.keys().next_back().map(String::as_str),
         )?;
         stream
             .entry(stream_id.clone())
             .or_insert(vec![])
             .push(stream_entry);
-        self.notifier.send(key).unwrap_or(0);
+        self.broadcast(&key).await;
         Ok(stream_id)
     }
 
@@ -64,7 +64,10 @@ impl InMemoryStore {
         }
     }
 
-    pub async fn get_filtered_streams(&self, filters: Vec<StreamFilter>) -> Vec<OwnedStreamData> {
+    pub async fn get_filtered_streams(
+        &self,
+        filters: Vec<StreamFilter>,
+    ) -> Option<Vec<StreamData>> {
         let guard = self.data.lock().await;
         let mut streams = vec![];
         for StreamFilter { key, range } in filters {
@@ -77,24 +80,48 @@ impl InMemoryStore {
                             entries
                                 .iter()
                                 .map(|(field, value)| (field.clone(), value.clone()))
-                                .collect::<Vec<_>>(),
+                                .collect(),
                         )
                     })
-                    .collect();
-                streams.push(OwnedStreamData { key, entries });
+                    .collect::<Vec<_>>();
+                if entries.is_empty() {
+                    continue;
+                }
+                streams.push(StreamData { key, entries });
             }
         }
-        streams
+        if streams.is_empty() {
+            None
+        } else {
+            Some(streams)
+        }
+    }
+
+    pub async fn subscribe(&self, tx: Sender<String>) -> Uuid {
+        let id = Uuid::new_v4();
+        self.subscribers.lock().await.insert(id, tx);
+        id
+    }
+
+    pub async fn unsubscribe(&self, id: Uuid) {
+        let mut subscribers = self.subscribers.lock().await;
+        subscribers.remove(&id);
+    }
+
+    async fn broadcast(&self, key: &str) {
+        let mut subscribers = self.subscribers.lock().await;
+        subscribers.retain(|_, tx| !tx.is_closed());
+        for tx in subscribers.values() {
+            let _ = tx.try_send(key.to_string());
+        }
     }
 }
 
 fn get_stream_id(incoming: StreamId, last: Option<&str>) -> Result<String> {
-    let (last_ms, last_seq) =
-        if let Some(StreamId::Explicit(last_ms, last_seq)) = last.map(StreamId::from) {
-            (last_ms, last_seq)
-        } else {
-            (0, 0)
-        };
+    let (last_ms, last_seq) = match last.map(StreamId::try_from).transpose()? {
+        Some(StreamId::Explicit(ms, seq)) => (ms, seq),
+        _ => (0, 0),
+    };
     match incoming {
         StreamId::Explicit(ms, seq) if ms == 0 && seq == 0 => {
             bail!(ERR_INVALID)

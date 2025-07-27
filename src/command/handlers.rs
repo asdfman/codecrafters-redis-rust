@@ -1,16 +1,10 @@
-use super::{
-    response::CommandResponse,
-    stream_handlers::{map_xrange_response, StreamFilter},
-};
 use crate::{
-    command::stream_handlers::map_xread_response,
     protocol::{Data, RedisArray},
     rdb::util::get_empty_rdb_file_bytes,
-    server::{context::null, replica::ReplicaManager, state::ServerState},
-    store::{store::InMemoryStore, value::Value},
+    server::context::{null, ServerContext},
+    store::{core::InMemoryStore, value::Value},
 };
-use anyhow::{bail, Result};
-use std::ops::Bound::*;
+use anyhow::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::Sender;
 
@@ -45,7 +39,8 @@ pub async fn get(key: &str, store: &InMemoryStore) -> String {
     }
 }
 
-pub async fn psync(tx: &Sender<Vec<u8>>, state: &ServerState) -> Result<()> {
+pub async fn psync(tx: &Sender<Vec<u8>>, ctx: &ServerContext) -> Result<()> {
+    let state = ctx.state.lock().await;
     let master_replid = state
         .get_key("replication", "master_replid")
         .expect("Failed to get master replication id");
@@ -60,8 +55,11 @@ pub async fn psync(tx: &Sender<Vec<u8>>, state: &ServerState) -> Result<()> {
     Ok(())
 }
 
-pub fn info(state: &ServerState) -> String {
-    state
+pub async fn info(context: &ServerContext) -> String {
+    context
+        .state
+        .lock()
+        .await
         .get_section("replication")
         .map(|x| {
             x.iter()
@@ -73,8 +71,10 @@ pub fn info(state: &ServerState) -> String {
         .unwrap_or_default()
 }
 
-pub async fn wait(replicas: &mut ReplicaManager, min_num_acks: i64, timeout_ms: u64) -> i64 {
-    replicas
+pub async fn wait(ctx: &ServerContext, min_num_acks: i64, timeout_ms: u64) -> i64 {
+    ctx.replicas
+        .lock()
+        .await
         .wait(min_num_acks, std::time::Duration::from_millis(timeout_ms))
         .await
         .expect("Failed to wait for replicas")
@@ -90,44 +90,6 @@ pub async fn type_handler(key: &str, store: &InMemoryStore) -> String {
         },
         None => "none".to_string(),
     }
-}
-
-pub async fn xread(
-    streams: Vec<(String, String)>,
-    _block: Option<u64>,
-    store: &InMemoryStore,
-) -> Result<CommandResponse> {
-    let key_ranges = streams
-        .into_iter()
-        .map(|(key, id)| StreamFilter {
-            key,
-            range: (Excluded(id), Unbounded),
-        })
-        .collect();
-    let filtered_stream = store.get_filtered_streams(key_ranges).await;
-    let arrays = map_xread_response(filtered_stream);
-    Ok(CommandResponse::Single(String::from(&arrays)))
-}
-
-pub async fn xrange(
-    key: String,
-    start: String,
-    end: String,
-    store: &InMemoryStore,
-) -> Result<CommandResponse> {
-    let range = match (start.as_str(), end.as_str()) {
-        ("-", "+") => (Unbounded, Unbounded),
-        ("-", _) => (Unbounded, Included(end)),
-        (_, "+") => (Included(start), Unbounded),
-        _ => (Included(start), Included(end)),
-    };
-    let key_ranges = vec![StreamFilter { key, range }];
-    let filtered_stream = store.get_filtered_streams(key_ranges).await;
-    let Some(stream) = filtered_stream.into_iter().next() else {
-        bail!("No stream found for the given key");
-    };
-    let arrays = map_xrange_response(stream.entries);
-    Ok(CommandResponse::Single(String::from(&arrays)))
 }
 
 pub fn encode_bstring(val: &str) -> String {

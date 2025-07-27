@@ -1,7 +1,9 @@
-use crate::protocol::Data;
-use std::ops::Bound;
+use super::response::CommandResponse;
+use crate::{protocol::Data, store::core::InMemoryStore};
+use std::ops::Bound::{self, *};
 
-pub struct OwnedStreamData {
+#[derive(Debug)]
+pub struct StreamData {
     pub key: String,
     pub entries: Vec<(String, Vec<(String, String)>)>,
 }
@@ -11,7 +13,91 @@ pub struct StreamFilter {
     pub range: (Bound<String>, Bound<String>),
 }
 
-pub fn map_xrange_response(entries: Vec<(String, Vec<(String, String)>)>) -> Data {
+pub async fn xread(
+    streams: Vec<(String, String)>,
+    block: Option<u64>,
+    store: &InMemoryStore,
+) -> Option<CommandResponse> {
+    let key_ranges = streams
+        .iter()
+        .map(|(key, id)| StreamFilter {
+            key: key.clone(),
+            range: (Excluded(id.clone()), Unbounded),
+        })
+        .collect();
+    let filtered_streams = match (store.get_filtered_streams(key_ranges).await, block) {
+        (Some(data), _) => Some(data),
+        (None, None) => None,
+        (None, Some(timeout)) => {
+            let updated_key = wait_for_new_data(
+                streams.iter().map(|f| f.0.clone()).collect(),
+                timeout,
+                store,
+            )
+            .await?;
+            let id = streams
+                .iter()
+                .find_map(|(key, id)| if key == &updated_key { Some(id) } else { None })?;
+            store
+                .get_filtered_streams(vec![StreamFilter {
+                    key: updated_key,
+                    range: (Excluded(id.clone()), Unbounded),
+                }])
+                .await
+        }
+    }?;
+    let arrays = map_xread_response(filtered_streams);
+    Some(CommandResponse::Single(String::from(&arrays)))
+}
+
+async fn wait_for_new_data(
+    keys: Vec<String>,
+    timeout_ms: u64,
+    store: &InMemoryStore,
+) -> Option<String> {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+    let sub_id = store.subscribe(tx).await;
+    let future = async {
+        while let Some(key) = rx.recv().await {
+            if keys.contains(&key) {
+                return Some(key);
+            }
+        }
+        None
+    };
+
+    let result = if timeout_ms == 0 {
+        future.await
+    } else {
+        tokio::time::timeout(tokio::time::Duration::from_millis(timeout_ms), future)
+            .await
+            .ok()
+            .flatten()
+    };
+    store.unsubscribe(sub_id).await;
+    result
+}
+
+pub async fn xrange(
+    key: String,
+    start: String,
+    end: String,
+    store: &InMemoryStore,
+) -> Option<CommandResponse> {
+    let range = match (start.as_str(), end.as_str()) {
+        ("-", "+") => (Unbounded, Unbounded),
+        ("-", _) => (Unbounded, Included(end)),
+        (_, "+") => (Included(start), Unbounded),
+        _ => (Included(start), Included(end)),
+    };
+    let key_ranges = vec![StreamFilter { key, range }];
+    let filtered_stream = store.get_filtered_streams(key_ranges).await;
+    let stream = filtered_stream?.into_iter().next()?;
+    let arrays = map_xrange_response(stream.entries);
+    Some(CommandResponse::Single(String::from(&arrays)))
+}
+
+fn map_xrange_response(entries: Vec<(String, Vec<(String, String)>)>) -> Data {
     Data::Array(
         entries
             .into_iter()
@@ -31,7 +117,7 @@ pub fn map_xrange_response(entries: Vec<(String, Vec<(String, String)>)>) -> Dat
     )
 }
 
-pub fn map_xread_response(streams: Vec<OwnedStreamData>) -> Data {
+fn map_xread_response(streams: Vec<StreamData>) -> Data {
     Data::Array(
         streams
             .into_iter()

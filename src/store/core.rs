@@ -7,32 +7,29 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{mpsc::Sender, Mutex};
+use uuid::Uuid;
 
 #[derive(Clone, Debug)]
 pub struct InMemoryStore {
     pub data: Arc<Mutex<HashMap<String, ValueWrapper>>>,
-    pub notifier: broadcast::Sender<String>,
+    pub subscribers: Arc<Mutex<HashMap<Uuid, Sender<String>>>>,
 }
 
 impl Default for InMemoryStore {
     fn default() -> Self {
-        let (tx, _) = broadcast::channel(100);
-        InMemoryStore::init_from_file().unwrap_or(Self {
-            data: Arc::new(Mutex::new(HashMap::new())),
-            notifier: tx,
-        })
+        InMemoryStore::init_from_file().unwrap_or(Self::new(HashMap::new()))
     }
 }
 
 impl InMemoryStore {
     fn new(data: HashMap<String, ValueWrapper>) -> Self {
-        let (tx, _) = broadcast::channel(100);
         Self {
             data: Arc::new(Mutex::new(data)),
-            notifier: tx,
+            subscribers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
+
     fn init_from_file() -> Option<Self> {
         let (dir, file_name) = (get_config_value("dir")?, get_config_value("dbfilename")?);
         let mut bytes = read_file(PathBuf::from(dir).join(file_name))?;
@@ -68,6 +65,7 @@ impl InMemoryStore {
             .map(String::from)
             .collect()
     }
+
     fn from_rdb_file(data: RdbFile) -> Self {
         let map: HashMap<String, ValueWrapper> = data
             .sections

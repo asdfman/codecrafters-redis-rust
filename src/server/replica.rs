@@ -9,7 +9,7 @@ use tokio::{
 };
 
 use crate::{
-    command::{definition::Command, response::CommandResponse},
+    command::{core::Command, response::CommandResponse},
     protocol::{Data, RedisArray},
 };
 

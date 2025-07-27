@@ -1,3 +1,3 @@
-pub mod store;
+pub mod core;
 pub mod stream;
 pub mod value;

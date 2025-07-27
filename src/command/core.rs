@@ -122,9 +122,15 @@ impl From<&[Data]> for Command {
     }
 }
 
+impl Command {
+    pub fn is_blocking(&self) -> bool {
+        matches!(self, Command::XRead { block: Some(_), .. })
+    }
+}
+
 fn parse_xread(val: &[Data]) -> Command {
     let mut stream_start = 2usize;
-    let block = match &val[1..2] {
+    let block = match &val[1..=2] {
         [Data::BStr(arg), Data::BStr(ms)] if arg.eq_ignore_ascii_case("BLOCK") => {
             stream_start = 4;
             Some(ms.parse::<u64>().unwrap())

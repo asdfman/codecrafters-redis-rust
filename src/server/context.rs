@@ -7,13 +7,14 @@ use tokio::{
 
 use crate::{
     command::{
-        definition::Command,
+        core::Command,
         handlers::{self, encode_bstring, encode_int, encode_sstring},
         response::CommandResponse,
+        stream_handlers,
     },
     protocol::{Data, RedisArray},
     server::{config, state::ServerState},
-    store::store::InMemoryStore,
+    store::core::InMemoryStore,
 };
 
 use super::{
@@ -26,23 +27,15 @@ pub fn null() -> String {
     NULL.to_string()
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ServerContext {
-    store: InMemoryStore,
-    state: ServerState,
-    replicas: ReplicaManager,
+    pub store: InMemoryStore,
+    pub state: Arc<Mutex<ServerState>>,
+    pub replicas: Arc<Mutex<ReplicaManager>>,
 }
 
 impl ServerContext {
-    pub fn new(store: InMemoryStore, state: ServerState) -> Self {
-        Self {
-            store,
-            state,
-            replicas: ReplicaManager::default(),
-        }
-    }
-
-    pub async fn execute_command(&mut self, request: Command) -> CommandResponse {
+    pub async fn execute_command(&self, request: Command) -> CommandResponse {
         match request {
             Command::Ping => sstring_response("PONG"),
             Command::Echo(val) => bstring_response(&val),
@@ -54,7 +47,11 @@ impl ServerContext {
                 raw_command,
             } => {
                 self.store.set(key.to_string(), value.clone(), expiry).await;
-                self.replicas.broadcast(raw_command.into_bytes()).await;
+                self.replicas
+                    .lock()
+                    .await
+                    .broadcast(raw_command.into_bytes())
+                    .await;
                 sstring_response("OK")
             }
             Command::ConfigGet(key) => config::get_config_value(&key)
@@ -65,14 +62,14 @@ impl ServerContext {
             Command::Keys(pattern) => {
                 CommandResponse::Single(handlers::keys(&pattern, &self.store).await)
             }
-            Command::Info => CommandResponse::Single(handlers::info(&self.state)),
+            Command::Info => CommandResponse::Single(handlers::info(self).await),
             Command::Psync(..) => CommandResponse::Stream,
             Command::Replconf => sstring_response("OK"),
             Command::ReplconfGetAck(_) => CommandResponse::ReplconfAck,
             Command::Wait {
                 num_replicas,
                 timeout,
-            } => int_response(handlers::wait(&mut self.replicas, num_replicas, timeout).await),
+            } => int_response(handlers::wait(self, num_replicas, timeout).await),
             Command::Type(key) => sstring_response(
                 handlers::type_handler(key.as_str(), &self.store)
                     .await
@@ -82,25 +79,32 @@ impl ServerContext {
                 Ok(res) => bstring_response(&res),
                 Err(e) => error_response(&e.to_string()),
             },
-            Command::XRange { key, start, end } => handlers::xrange(key, start, end, &self.store)
-                .await
-                .unwrap_or(null_response()),
-            Command::XRead { streams, block } => handlers::xread(streams, block, &self.store)
-                .await
-                .unwrap_or(null_response()),
+            Command::XRange { key, start, end } => {
+                stream_handlers::xrange(key, start, end, &self.store)
+                    .await
+                    .unwrap_or(null_response())
+            }
+            Command::XRead { streams, block } => {
+                stream_handlers::xread(streams, block, &self.store)
+                    .await
+                    .unwrap_or(null_response())
+            }
             Command::Invalid | Command::ReplconfAck(_) => null_response(),
         }
     }
 
-    pub async fn add_replica(&mut self, reader: StreamReader<TcpStream>) {
+    pub async fn add_replica(&self, reader: StreamReader<TcpStream>) {
         let (tx, rx) = mpsc::channel::<Vec<u8>>(100);
         let replica_id = uuid::Uuid::new_v4().to_string();
         let replica_state = Arc::new(Mutex::new(ReplicaState::new(tx.clone())));
         let state_clone = replica_state.clone();
-        if handlers::psync(&tx, &self.state).await.is_err() {
+        if handlers::psync(&tx, self).await.is_err() {
             eprintln!("Replica sync failed");
         }
-        self.replicas.add_channel(replica_id, replica_state);
+        self.replicas
+            .lock()
+            .await
+            .add_channel(replica_id, replica_state);
 
         tokio::spawn(async move {
             replica_stream_handler(reader, rx, state_clone).await;
