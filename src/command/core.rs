@@ -41,6 +41,7 @@ pub enum Command {
         streams: Vec<(String, String)>,
         block: Option<u64>,
     },
+    Incr(String),
     Invalid,
 }
 
@@ -93,15 +94,19 @@ impl From<&[Data]> for Command {
                 Command::ReplconfGetAck(arg.into())
             }
             ("REPLCONF", [Data::BStr(subcmd), Data::BStr(offset), ..])
-                if subcmd.eq_ignore_ascii_case("ACK") =>
+                if subcmd.eq_ignore_ascii_case("ACK") && is_number(offset) =>
             {
                 Command::ReplconfAck(offset.parse::<usize>().unwrap())
             }
             ("REPLCONF", [..]) => Command::Replconf,
-            ("WAIT", [Data::BStr(num), Data::BStr(timeout)]) => Command::Wait {
-                num_replicas: num.parse::<i64>().unwrap(),
-                timeout: timeout.parse::<u64>().unwrap(),
-            },
+            ("WAIT", [Data::BStr(num), Data::BStr(timeout)])
+                if is_number(num) && is_number(timeout) =>
+            {
+                Command::Wait {
+                    num_replicas: num.parse::<i64>().unwrap(),
+                    timeout: timeout.parse::<u64>().unwrap(),
+                }
+            }
             ("TYPE", [Data::BStr(key)]) => Command::Type(key.into()),
             (
                 "XADD",
@@ -117,6 +122,7 @@ impl From<&[Data]> for Command {
                 end: end.into(),
             },
             ("XREAD", ..) => parse_xread(val),
+            ("INCR", [Data::BStr(key)]) => Command::Incr(key.into()),
             _ => Command::Invalid,
         }
     }
@@ -128,10 +134,14 @@ impl Command {
     }
 }
 
+fn is_number(val: &str) -> bool {
+    val.chars().all(|c| c.is_ascii_digit())
+}
+
 fn parse_xread(val: &[Data]) -> Command {
     let mut stream_start = 2usize;
     let block = match &val[1..=2] {
-        [Data::BStr(arg), Data::BStr(ms)] if arg.eq_ignore_ascii_case("BLOCK") => {
+        [Data::BStr(arg), Data::BStr(ms)] if arg.eq_ignore_ascii_case("BLOCK") && is_number(ms) => {
             stream_start = 4;
             Some(ms.parse::<u64>().unwrap())
         }

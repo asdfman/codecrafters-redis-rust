@@ -89,6 +89,20 @@ impl ServerContext {
                     .await
                     .unwrap_or(null_response())
             }
+            Command::Incr(key) => {
+                let value = self.store.incr(key.clone()).await;
+                match value {
+                    0 => error_response("value is not an integer or out of range"),
+                    _ => {
+                        self.replicas
+                            .lock()
+                            .await
+                            .broadcast(raw_incr_command(key, value as u64).into_bytes())
+                            .await;
+                        int_response(value)
+                    }
+                }
+            }
             Command::Invalid | Command::ReplconfAck(_) => null_response(),
         }
     }
@@ -170,4 +184,13 @@ fn int_response(val: i64) -> CommandResponse {
 
 fn error_response(err: &str) -> CommandResponse {
     CommandResponse::Single(String::from(&Data::SimpleError(err.to_string())))
+}
+
+fn raw_incr_command(key: String, arg: u64) -> String {
+    RedisArray(vec![
+        Data::BStr("INCR".into()),
+        Data::BStr(key),
+        Data::BStr(arg.to_string()),
+    ])
+    .into()
 }

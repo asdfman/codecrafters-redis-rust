@@ -66,6 +66,23 @@ impl InMemoryStore {
             .collect()
     }
 
+    pub async fn incr(&self, key: String) -> i64 {
+        let mut data = self.data.lock().await;
+        let value = data.entry(key).or_insert_with(|| ValueWrapper {
+            value: Value::String("0".to_string()),
+            expiry: None,
+        });
+
+        if let Value::String(ref mut current) = &mut value.value {
+            if let Ok(current_value) = current.parse::<i64>() {
+                let new_value = current_value + 1;
+                *current = new_value.to_string();
+                return new_value;
+            }
+        }
+        0
+    }
+
     fn from_rdb_file(data: RdbFile) -> Self {
         let map: HashMap<String, ValueWrapper> = data
             .sections
