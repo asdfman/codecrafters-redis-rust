@@ -105,6 +105,12 @@ impl ServerContext {
             Command::LRange { key, start, end } => {
                 array_response(self.store.list_range(key, start, end).await)
             }
+            Command::LLen(key) => int_response(self.store.list_len(key).await as i64),
+            Command::LPop(key, count) => match self.store.lpop(key, count).await {
+                Some(values) => array_response(values),
+                None => null_response(),
+            },
+            Command::BLPop(key, block_ms) => todo!(),
             Command::Multi => sstring_response("OK"),
             //Command::Exec => error_response("EXEC without multi"),
             _ => null_response(),

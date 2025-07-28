@@ -50,4 +50,33 @@ impl InMemoryStore {
             vec![]
         }
     }
+
+    pub async fn list_len(&self, key: String) -> usize {
+        if let Some(ValueWrapper {
+            value: Value::List(list),
+            ..
+        }) = self.data.lock().await.get(&key)
+        {
+            list.len()
+        } else {
+            0
+        }
+    }
+
+    pub async fn lpop(&self, key: String, count: usize) -> Option<Vec<String>> {
+        let mut data = self.data.lock().await;
+        if let Some(ValueWrapper {
+            value: Value::List(list),
+            ..
+        }) = data.get_mut(&key)
+        {
+            let popped = list.drain(..count.min(list.len())).collect::<Vec<_>>();
+            if list.is_empty() {
+                data.remove(&key);
+            }
+            Some(popped)
+        } else {
+            None
+        }
+    }
 }

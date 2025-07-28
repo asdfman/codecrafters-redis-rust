@@ -61,7 +61,8 @@ pub enum Command {
         end: isize,
     },
     LLen(String),
-    ListPop(String, Option<u64>),
+    LPop(String, usize),
+    BLPop(Vec<String>, Option<u64>),
     Transaction(Vec<Command>),
 }
 
@@ -171,10 +172,11 @@ impl From<&[Data]> for Command {
                 }
             }
             ("LLEN", [Data::BStr(key)]) => Command::LLen(key.into()),
-            ("LPOP", [Data::BStr(key)]) => Command::ListPop(key.into(), None),
-            ("BLPOP", [Data::BStr(key), Data::BStr(timeout)]) if is_number(timeout) => {
-                Command::ListPop(key.into(), Some(timeout.parse::<u64>().unwrap()))
+            ("LPOP", [Data::BStr(key), Data::BStr(count)]) if is_number(count) => {
+                Command::LPop(key.into(), count.parse::<usize>().unwrap())
             }
+            ("LPOP", [Data::BStr(key)]) => Command::LPop(key.into(), 1),
+            ("BLPOP", [..]) => parse_blpop(&val[1..]),
             _ => Command::Invalid,
         }
     }
@@ -223,6 +225,22 @@ fn parse_xread(val: &[Data]) -> Command {
         })
         .collect();
     Command::XRead { streams, block }
+}
+
+fn parse_blpop(val: &[Data]) -> Command {
+    let mut keys = vec![];
+    for d in &val[0..val.len() - 1] {
+        if let Data::BStr(arg) = d {
+            keys.push(arg.to_string());
+        }
+    }
+    let block = match val.get(val.len() - 1) {
+        Some(Data::BStr(timeout)) if is_number(timeout) => {
+            timeout.parse::<f64>().unwrap() * 1000f64
+        }
+        _ => return Command::Invalid,
+    };
+    Command::BLPop(keys, Some(block as u64))
 }
 
 fn get_raw_array_command(val: &[Data]) -> String {
