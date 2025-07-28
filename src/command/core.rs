@@ -49,6 +49,19 @@ pub enum Command {
     Exec,
     Invalid,
     Discard,
+    ListPush {
+        key: String,
+        values: Vec<String>,
+        is_left: bool,
+        raw_command: String,
+    },
+    LRange {
+        key: String,
+        start: u64,
+        end: u64,
+    },
+    LLen(String),
+    ListPop(String, Option<u64>),
     Transaction(Vec<Command>),
 }
 
@@ -136,9 +149,47 @@ impl From<&[Data]> for Command {
             ("MULTI", ..) => Command::Multi,
             ("EXEC", ..) => Command::Exec,
             ("DISCARD", ..) => Command::Discard,
+            ("RPUSH", [Data::BStr(key), ..]) => Command::ListPush {
+                key: key.into(),
+                raw_command: get_raw_array_command(val),
+                values: parse_string_args(&val[2..]),
+                is_left: false,
+            },
+            ("LPUSH", [Data::BStr(key), ..]) => Command::ListPush {
+                key: key.into(),
+                raw_command: get_raw_array_command(val),
+                values: parse_string_args(&val[2..]),
+                is_left: true,
+            },
+            ("LRANGE", [Data::BStr(key), Data::BStr(start), Data::BStr(end)])
+                if is_number(start) && is_number(end) =>
+            {
+                Command::LRange {
+                    key: key.into(),
+                    start: start.parse::<u64>().unwrap(),
+                    end: end.parse::<u64>().unwrap(),
+                }
+            }
+            ("LLEN", [Data::BStr(key)]) => Command::LLen(key.into()),
+            ("LPOP", [Data::BStr(key)]) => Command::ListPop(key.into(), None),
+            ("BLPOP", [Data::BStr(key), Data::BStr(timeout)]) if is_number(timeout) => {
+                Command::ListPop(key.into(), Some(timeout.parse::<u64>().unwrap()))
+            }
             _ => Command::Invalid,
         }
     }
+}
+
+fn parse_string_args(val: &[Data]) -> Vec<String> {
+    val.iter()
+        .filter_map(|x| {
+            if let Data::BStr(s) = x {
+                Some(s.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 impl Command {
@@ -148,7 +199,7 @@ impl Command {
 }
 
 fn is_number(val: &str) -> bool {
-    val.chars().all(|c| c.is_ascii_digit())
+    val.chars().all(|c| c.is_ascii_digit() || c == '.')
 }
 
 fn parse_xread(val: &[Data]) -> Command {

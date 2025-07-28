@@ -42,11 +42,7 @@ impl ServerContext {
                 raw_command,
             } => {
                 self.store.set(key.to_string(), value.clone(), expiry).await;
-                self.replicas
-                    .lock()
-                    .await
-                    .broadcast(raw_command.into_bytes())
-                    .await;
+                self.propagate(raw_command).await;
                 sstring_response("OK")
             }
             Command::ConfigGet(key) => config::get_config_value(&key)
@@ -89,17 +85,25 @@ impl ServerContext {
                 match value {
                     0 => error_response("value is not an integer or out of range"),
                     _ => {
-                        self.replicas
-                            .lock()
-                            .await
-                            .broadcast(raw_command.into_bytes())
-                            .await;
+                        self.propagate(raw_command).await;
                         int_response(value)
                     }
                 }
             }
+            Command::ListPush {
+                key,
+                values,
+                raw_command,
+                is_left,
+            } => match self.store.list_push(key, values, is_left).await {
+                Ok(len) => {
+                    self.propagate(raw_command).await;
+                    int_response(len as i64)
+                }
+                Err(e) => error_response(&e.to_string()),
+            },
             Command::Multi => sstring_response("OK"),
-            Command::Exec => error_response("EXEC without multi"),
+            //Command::Exec => error_response("EXEC without multi"),
             _ => null_response(),
         }
     }
@@ -130,5 +134,13 @@ impl ServerContext {
         tokio::spawn(async move {
             replica_stream_handler(reader, rx, state_clone).await;
         });
+    }
+
+    async fn propagate(&self, command: String) {
+        self.replicas
+            .lock()
+            .await
+            .broadcast(command.into_bytes())
+            .await;
     }
 }
