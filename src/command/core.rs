@@ -41,7 +41,10 @@ pub enum Command {
         streams: Vec<(String, String)>,
         block: Option<u64>,
     },
-    Incr(String),
+    Incr {
+        key: String,
+        raw_command: String,
+    },
     Multi,
     Exec,
     Invalid,
@@ -126,7 +129,10 @@ impl From<&[Data]> for Command {
                 end: end.into(),
             },
             ("XREAD", ..) => parse_xread(val),
-            ("INCR", [Data::BStr(key)]) => Command::Incr(key.into()),
+            ("INCR", [Data::BStr(key)]) => Command::Incr {
+                key: key.into(),
+                raw_command: get_raw_array_command(val),
+            },
             ("MULTI", ..) => Command::Multi,
             ("EXEC", ..) => Command::Exec,
             ("DISCARD", ..) => Command::Discard,

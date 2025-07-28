@@ -1,31 +1,26 @@
-use std::sync::Arc;
-
-use tokio::{
-    net::TcpStream,
-    sync::{mpsc, Mutex},
+use super::{
+    replica::{replica_stream_handler, ReplicaManager, ReplicaState},
+    stream_reader::StreamReader,
 };
-
 use crate::{
     command::{
         core::Command,
-        handlers::{self, encode_bstring, encode_int, encode_sstring},
-        response::CommandResponse,
+        handlers::{self},
+        response::{
+            bstring_response, error_response, int_response, null_response, sstring_response,
+            CommandResponse,
+        },
         stream_handlers,
     },
     protocol::{Data, RedisArray},
     server::{config, state::ServerState},
     store::core::InMemoryStore,
 };
-
-use super::{
-    replica::{ReplicaManager, ReplicaState},
-    stream_reader::StreamReader,
+use std::sync::Arc;
+use tokio::{
+    net::TcpStream,
+    sync::{mpsc, Mutex},
 };
-
-const NULL: &str = "$-1\r\n";
-pub fn null() -> String {
-    NULL.to_string()
-}
 
 #[derive(Clone, Default)]
 pub struct ServerContext {
@@ -89,7 +84,7 @@ impl ServerContext {
                     .await
                     .unwrap_or(null_response())
             }
-            Command::Incr(key) => {
+            Command::Incr { key, raw_command } => {
                 let value = self.store.incr(key.clone()).await;
                 match value {
                     0 => error_response("value is not an integer or out of range"),
@@ -97,7 +92,7 @@ impl ServerContext {
                         self.replicas
                             .lock()
                             .await
-                            .broadcast(raw_incr_command(key, value as u64).into_bytes())
+                            .broadcast(raw_command.into_bytes())
                             .await;
                         int_response(value)
                     }
@@ -136,73 +131,4 @@ impl ServerContext {
             replica_stream_handler(reader, rx, state_clone).await;
         });
     }
-}
-
-async fn replica_stream_handler(
-    mut reader: StreamReader<TcpStream>,
-    mut rx: mpsc::Receiver<Vec<u8>>,
-    state: Arc<Mutex<ReplicaState>>,
-) {
-    loop {
-        tokio::select! {
-            Some(data) = rx.recv() => {
-                if let Err(e) = reader.write_stream(&data).await {
-                    eprintln!("Failed to write response to replica: {e}");
-                    break;
-                }
-            }
-            result = reader.read_redis_data() => {
-                match result {
-                    Ok(data) => process_response(Ok(data), state.clone()).await,
-                    Err(e) => {
-                        eprintln!("Failed to read response from replica: {e}");
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-
-async fn process_response(result: anyhow::Result<Data>, state: Arc<Mutex<ReplicaState>>) {
-    match result {
-        Ok(Data::Array(response)) => {
-            if let Command::ReplconfAck(offset) = Command::from(response.as_slice()) {
-                state.lock().await.update_latest_offset(offset);
-            }
-        }
-        Ok(data) => eprintln!("Unexpected response received from replica: {data:?}"),
-        Err(e) => {
-            eprintln!("Failed to read response from replica: {e}");
-        }
-    }
-}
-
-fn bstring_response(val: &str) -> CommandResponse {
-    CommandResponse::Single(encode_bstring(val))
-}
-
-fn sstring_response(val: &str) -> CommandResponse {
-    CommandResponse::Single(encode_sstring(val))
-}
-
-fn null_response() -> CommandResponse {
-    CommandResponse::Single(null())
-}
-
-fn int_response(val: i64) -> CommandResponse {
-    CommandResponse::Single(encode_int(val))
-}
-
-pub fn error_response(err: &str) -> CommandResponse {
-    CommandResponse::Single(String::from(&Data::SimpleError(err.to_string())))
-}
-
-fn raw_incr_command(key: String, arg: u64) -> String {
-    RedisArray(vec![
-        Data::BStr("INCR".into()),
-        Data::BStr(key),
-        Data::BStr(arg.to_string()),
-    ])
-    .into()
 }

@@ -1,12 +1,14 @@
 use crate::{
+    common::{encode_bstring, encode_sstring, null},
     protocol::{Data, RedisArray},
-    rdb::util::get_empty_rdb_file_bytes,
-    server::context::{null, ServerContext},
+    server::context::ServerContext,
     store::{core::InMemoryStore, value::Value},
 };
 use anyhow::Result;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::Sender;
+
+use super::response::psync_response;
 
 pub async fn keys(pattern: &str, store: &InMemoryStore) -> String {
     let keys = store
@@ -92,34 +94,8 @@ pub async fn type_handler(key: &str, store: &InMemoryStore) -> String {
     }
 }
 
-pub fn encode_bstring(val: &str) -> String {
-    String::from(&Data::BStr(val.to_string()))
-}
-
-pub fn encode_sstring(val: &str) -> String {
-    String::from(&Data::SStr(val.to_string()))
-}
-
-pub fn encode_int(val: i64) -> String {
-    String::from(&Data::Int(val))
-}
-
 pub fn decode_sstring(val: &str) -> String {
     val.trim_start_matches('+')
         .trim_end_matches("\r\n")
         .to_string()
-}
-
-pub fn replconf_getack(bytes: usize) -> String {
-    RedisArray(vec![
-        Data::BStr("REPLCONF".into()),
-        Data::BStr("ACK".into()),
-        Data::BStr(bytes.to_string()),
-    ])
-    .into()
-}
-
-fn psync_response() -> (String, Vec<u8>) {
-    let bytes = get_empty_rdb_file_bytes();
-    (format!("${}\r\n", bytes.len()), bytes)
 }

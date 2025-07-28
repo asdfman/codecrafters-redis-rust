@@ -1,43 +1,30 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use codecrafters_redis::{
-    command::{core::Command, handlers::encode_sstring, response::CommandResponse},
-    protocol::Data,
+    command::{core::Command, response::CommandResponse},
     server::{
-        config::get_config_value, context::ServerContext, replica::init_replica,
-        stream_reader::StreamReader,
+        config::get_config_value, connection_handler::handle_connection, context::ServerContext,
+        replica::init_replica,
     },
 };
 use tokio::{
-    net::{TcpListener, TcpStream},
-    sync::{mpsc, oneshot},
+    net::TcpListener,
+    sync::{
+        mpsc::{self, Receiver},
+        oneshot,
+    },
 };
+
+type ChannelType = (Command, Option<oneshot::Sender<CommandResponse>>);
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let listen_port = get_config_value("port").unwrap_or("6379".to_string());
     let listener = TcpListener::bind(format!("127.0.0.1:{listen_port}")).await?;
-    let (tx, mut rx) = mpsc::channel::<(Command, Option<oneshot::Sender<CommandResponse>>)>(100);
+    let (tx, rx) = mpsc::channel::<ChannelType>(100);
     let context = ServerContext::default();
 
     let context_clone = context.clone();
-    let event_loop = tokio::spawn(async move {
-        while let Some((task, result_tx)) = rx.recv().await {
-            if task.is_blocking() {
-                let context = context_clone.clone();
-                tokio::spawn(async move {
-                    let result = context.execute_command(task).await;
-                    if let Some(tx) = result_tx {
-                        let _ = tx.send(result);
-                    }
-                });
-            } else {
-                let result = context_clone.execute_command(task).await;
-                if result_tx.is_some() && result_tx.unwrap().send(result).is_err() {
-                    eprintln!("Failed to send response to connection handler.");
-                }
-            }
-        }
-    });
+    let event_loop_future = tokio::spawn(async move { event_loop(rx, context_clone).await });
 
     if let Some(val) = get_config_value("replicaof") {
         let tx = tx.clone();
@@ -56,80 +43,34 @@ async fn main() -> Result<()> {
         });
     }
 
-    event_loop.await?;
+    event_loop_future.await?;
     Ok(())
 }
 
-async fn handle_connection(
-    stream: TcpStream,
-    tx: mpsc::Sender<(Command, Option<oneshot::Sender<CommandResponse>>)>,
-    context: ServerContext,
-) -> Result<()> {
-    let mut reader = StreamReader::new(stream, false);
-    let mut transaction_commands = vec![];
-    let mut in_transaction = false;
-    loop {
-        let data = reader.read_redis_data().await?;
-        let command: Command = data.into();
-        match &command {
-            Command::Multi => {
-                in_transaction = true;
-                reader.write_stream(encode_sstring("OK").as_bytes()).await?;
-                continue;
-            }
-            Command::Exec if !in_transaction => {
-                let response = String::from(&Data::SimpleError("EXEC without MULTI".to_string()));
-                reader.write_stream(response.as_bytes()).await?;
-                continue;
-            }
-            Command::Exec => {
-                let response = context
-                    .process_transaction(transaction_commands.clone())
-                    .await;
-                reader
-                    .write_stream(String::from(response).as_bytes())
-                    .await?;
-                transaction_commands.clear();
-                in_transaction = false;
-                continue;
-            }
-            Command::Discard if in_transaction => {
-                in_transaction = false;
-                transaction_commands.clear();
-                reader.write_stream(encode_sstring("OK").as_bytes()).await?;
-                continue;
-            }
-            Command::Discard if !in_transaction => {
-                let response =
-                    String::from(&Data::SimpleError("DISCARD without MULTI".to_string()));
-                reader.write_stream(response.as_bytes()).await?;
-                continue;
-            }
-            _ if in_transaction => {
-                transaction_commands.push(command.clone());
-                reader
-                    .write_stream(encode_sstring("QUEUED").as_bytes())
-                    .await?;
-                continue;
-            }
-            _ => (),
-        }
-
-        let (result_tx, result_rx) = oneshot::channel();
-        tx.send((command, Some(result_tx))).await?;
-
-        match result_rx.await? {
-            CommandResponse::Stream => {
-                context.add_replica(reader).await;
-                return Ok(());
-            }
-            CommandResponse::Single(response) => reader.write_stream(response.as_bytes()).await?,
-            CommandResponse::Multiple(responses) => {
-                for response in responses {
-                    reader.write_stream(response.as_bytes()).await?;
+async fn event_loop(mut rx: Receiver<ChannelType>, context: ServerContext) -> () {
+    while let Some((task, result_tx)) = rx.recv().await {
+        match task {
+            Command::Transaction(commands) => {
+                let result = context.process_transaction(commands).await;
+                if result_tx.is_some() && result_tx.unwrap().send(result).is_err() {
+                    eprintln!("Failed to send response to connection handler.");
                 }
             }
-            CommandResponse::ReplconfAck => bail!("REPLCONF ACK in client stream"),
+            _ if task.is_blocking() => {
+                let context = context.clone();
+                tokio::spawn(async move {
+                    let result = context.execute_command(task).await;
+                    if let Some(tx) = result_tx {
+                        let _ = tx.send(result);
+                    }
+                });
+            }
+            _ => {
+                let result = context.execute_command(task).await;
+                if result_tx.is_some() && result_tx.unwrap().send(result).is_err() {
+                    eprintln!("Failed to send response to connection handler.");
+                }
+            }
         }
     }
 }

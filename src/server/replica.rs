@@ -1,19 +1,16 @@
-use std::sync::Arc;
-
-use anyhow::{bail, Context, Result};
-use futures::future::join_all;
-use hashbrown::{HashMap, HashSet};
-use tokio::{
-    net::TcpStream,
-    sync::{mpsc, oneshot, Mutex},
-};
-
+use super::stream_reader::StreamReader;
 use crate::{
     command::{core::Command, response::CommandResponse},
     protocol::{Data, RedisArray},
 };
-
-use super::stream_reader::StreamReader;
+use anyhow::{bail, Context, Result};
+use futures::future::join_all;
+use hashbrown::{HashMap, HashSet};
+use std::sync::Arc;
+use tokio::{
+    net::TcpStream,
+    sync::{mpsc, oneshot, Mutex},
+};
 
 #[derive(Debug)]
 pub struct ReplicaState {
@@ -183,7 +180,7 @@ pub async fn init_replica(
                 if let Ok(CommandResponse::ReplconfAck) = response {
                     if reader
                         .write_stream(
-                            crate::command::handlers::replconf_getack(
+                            crate::command::response::replconf_getack(
                                 reader.get_processed_bytes()
                                     - reader.get_latest_command_byte_length(),
                             )
@@ -202,4 +199,44 @@ pub async fn init_replica(
     });
 
     Ok(())
+}
+
+pub async fn replica_stream_handler(
+    mut reader: StreamReader<TcpStream>,
+    mut rx: mpsc::Receiver<Vec<u8>>,
+    state: Arc<Mutex<ReplicaState>>,
+) {
+    loop {
+        tokio::select! {
+            Some(data) = rx.recv() => {
+                if let Err(e) = reader.write_stream(&data).await {
+                    eprintln!("Failed to write response to replica: {e}");
+                    break;
+                }
+            }
+            result = reader.read_redis_data() => {
+                match result {
+                    Ok(data) => process_response(Ok(data), state.clone()).await,
+                    Err(e) => {
+                        eprintln!("Failed to read response from replica: {e}");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn process_response(result: anyhow::Result<Data>, state: Arc<Mutex<ReplicaState>>) {
+    match result {
+        Ok(Data::Array(response)) => {
+            if let Command::ReplconfAck(offset) = Command::from(response.as_slice()) {
+                state.lock().await.update_latest_offset(offset);
+            }
+        }
+        Ok(data) => eprintln!("Unexpected response received from replica: {data:?}"),
+        Err(e) => {
+            eprintln!("Failed to read response from replica: {e}");
+        }
+    }
 }
