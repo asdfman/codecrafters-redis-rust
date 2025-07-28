@@ -107,6 +107,7 @@ impl ServerContext {
             }
             Command::LLen(key) => int_response(self.store.list_len(key).await as i64),
             Command::LPop(key, count) => match self.store.lpop(key, count).await {
+                Some(values) if values.len() == 1 => bstring_response(&values[0]),
                 Some(values) => array_response(values),
                 None => null_response(),
             },
