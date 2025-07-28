@@ -15,8 +15,7 @@ impl From<CommandResponse> for String {
         match response {
             CommandResponse::Single(data) => data,
             CommandResponse::Multiple(data) => encode_resp_array(&data),
-            CommandResponse::Stream => "STREAM".to_string(),
-            CommandResponse::ReplconfAck => "REPLCONF ACK".to_string(),
+            _ => null(),
         }
     }
 }
@@ -61,4 +60,9 @@ pub fn int_response(val: i64) -> CommandResponse {
 
 pub fn error_response(err: &str) -> CommandResponse {
     CommandResponse::Single(encode_error(err))
+}
+
+pub fn array_response(items: Vec<String>) -> CommandResponse {
+    let bstring_items: Vec<String> = items.into_iter().map(|s| encode_bstring(&s)).collect();
+    CommandResponse::Single(encode_resp_array(bstring_items.as_slice()))
 }

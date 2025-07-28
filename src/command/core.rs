@@ -57,8 +57,8 @@ pub enum Command {
     },
     LRange {
         key: String,
-        start: u64,
-        end: u64,
+        start: isize,
+        end: isize,
     },
     LLen(String),
     ListPop(String, Option<u64>),
@@ -166,8 +166,8 @@ impl From<&[Data]> for Command {
             {
                 Command::LRange {
                     key: key.into(),
-                    start: start.parse::<u64>().unwrap(),
-                    end: end.parse::<u64>().unwrap(),
+                    start: start.parse::<isize>().unwrap(),
+                    end: end.parse::<isize>().unwrap(),
                 }
             }
             ("LLEN", [Data::BStr(key)]) => Command::LLen(key.into()),
@@ -199,7 +199,8 @@ impl Command {
 }
 
 fn is_number(val: &str) -> bool {
-    val.chars().all(|c| c.is_ascii_digit() || c == '.')
+    val.chars()
+        .all(|c| c.is_ascii_digit() || c == '.' || c == '-')
 }
 
 fn parse_xread(val: &[Data]) -> Command {

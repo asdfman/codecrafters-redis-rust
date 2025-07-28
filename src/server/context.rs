@@ -7,8 +7,8 @@ use crate::{
         core::Command,
         handlers::{self},
         response::{
-            bstring_response, error_response, int_response, null_response, sstring_response,
-            CommandResponse,
+            array_response, bstring_response, error_response, int_response, null_response,
+            sstring_response, CommandResponse,
         },
         stream_handlers,
     },
@@ -102,6 +102,9 @@ impl ServerContext {
                 }
                 Err(e) => error_response(&e.to_string()),
             },
+            Command::LRange { key, start, end } => {
+                array_response(self.store.list_range(key, start, end).await)
+            }
             Command::Multi => sstring_response("OK"),
             //Command::Exec => error_response("EXEC without multi"),
             _ => null_response(),

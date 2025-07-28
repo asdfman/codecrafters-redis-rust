@@ -26,4 +26,28 @@ impl InMemoryStore {
             bail!("Key is not a list");
         }
     }
+
+    pub async fn list_range(&self, key: String, mut start: isize, mut end: isize) -> Vec<String> {
+        if let Some(ValueWrapper {
+            value: Value::List(list),
+            ..
+        }) = self.data.lock().await.get(&key)
+        {
+            let len = list.len() as isize;
+            if start < 0 {
+                start += len;
+            }
+            if end < 0 {
+                end += len;
+            }
+            start = start.clamp(0, len - 1);
+            end = end.clamp(0, len - 1);
+            if start > end {
+                return vec![];
+            }
+            list[start as usize..=end as usize].to_vec()
+        } else {
+            vec![]
+        }
+    }
 }
