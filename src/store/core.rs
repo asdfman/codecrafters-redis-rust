@@ -7,13 +7,13 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::{mpsc::Sender, Mutex};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct InMemoryStore {
     pub data: Arc<Mutex<HashMap<String, ValueWrapper>>>,
-    pub subscribers: Arc<Mutex<HashMap<Uuid, Sender<String>>>>,
+    pub subscribers: Arc<Mutex<HashMap<Uuid, super::subscribe::Subscription>>>,
 }
 
 impl Default for InMemoryStore {

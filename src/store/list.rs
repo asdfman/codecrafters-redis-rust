@@ -1,5 +1,6 @@
 use super::{
     core::InMemoryStore,
+    subscribe::wait_for_new_data,
     value::{Value, ValueWrapper},
 };
 use anyhow::{bail, Result};
@@ -21,6 +22,7 @@ impl InMemoryStore {
                 true => values.into_iter().for_each(|v| list.insert(0, v)),
                 false => values.into_iter().for_each(|v| list.push(v)),
             }
+            self.broadcast(&key).await;
             Ok(list.len())
         } else {
             bail!("Key is not a list");
@@ -63,7 +65,7 @@ impl InMemoryStore {
         }
     }
 
-    pub async fn lpop(&self, key: String, count: usize) -> Option<Vec<String>> {
+    pub async fn list_pop(&self, key: String, count: usize) -> Option<Vec<String>> {
         let mut data = self.data.lock().await;
         if let Some(ValueWrapper {
             value: Value::List(list),
@@ -77,6 +79,37 @@ impl InMemoryStore {
             Some(popped)
         } else {
             None
+        }
+    }
+    pub async fn blpop(&self, keys: &[String]) -> Option<Vec<String>> {
+        let mut data = self.data.lock().await;
+        for key in keys {
+            if let Some(ValueWrapper {
+                value: Value::List(list),
+                ..
+            }) = data.get_mut(key)
+            {
+                let value = list.remove(0);
+                if list.is_empty() {
+                    data.remove(key);
+                }
+                return Some(vec![key.clone(), value]);
+            }
+        }
+        None
+    }
+}
+
+pub async fn blpop_handler(
+    store: &InMemoryStore,
+    keys: Vec<String>,
+    block_ms: u64,
+) -> Option<Vec<String>> {
+    match store.blpop(&keys).await {
+        val if val.is_some() => val,
+        _ => {
+            let updated_key = wait_for_new_data(&keys, block_ms, store).await?;
+            store.blpop(&[updated_key]).await
         }
     }
 }

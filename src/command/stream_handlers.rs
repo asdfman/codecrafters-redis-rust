@@ -1,7 +1,7 @@
 use super::response::CommandResponse;
 use crate::{
     protocol::Data,
-    store::{core::InMemoryStore, stream::StreamQueryResult},
+    store::{core::InMemoryStore, stream::StreamQueryResult, subscribe::wait_for_new_data},
 };
 use std::ops::Bound::{self, *};
 
@@ -44,7 +44,12 @@ pub async fn xread(
             Some(timeout),
         ) => {
             let updated_key = wait_for_new_data(
-                streams.iter().map(|f| f.0.clone()).collect(),
+                streams
+                    .iter()
+                    .map(|f| &f.0)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .as_slice(),
                 timeout,
                 store,
             )
@@ -71,34 +76,6 @@ pub async fn xread(
     }?;
     let arrays = map_xread_response(filtered_streams);
     Some(CommandResponse::Single(String::from(&arrays)))
-}
-
-async fn wait_for_new_data(
-    keys: Vec<String>,
-    timeout_ms: u64,
-    store: &InMemoryStore,
-) -> Option<String> {
-    let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-    let sub_id = store.subscribe(tx).await;
-    let future = async {
-        while let Some(key) = rx.recv().await {
-            if keys.contains(&key) {
-                return Some(key);
-            }
-        }
-        None
-    };
-
-    let result = if timeout_ms == 0 {
-        future.await
-    } else {
-        tokio::time::timeout(tokio::time::Duration::from_millis(timeout_ms), future)
-            .await
-            .ok()
-            .flatten()
-    };
-    store.unsubscribe(sub_id).await;
-    result
 }
 
 pub async fn xrange(

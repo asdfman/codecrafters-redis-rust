@@ -62,7 +62,7 @@ pub enum Command {
     },
     LLen(String),
     LPop(String, usize),
-    BLPop(Vec<String>, Option<u64>),
+    BLPop(Vec<String>, u64),
     Transaction(Vec<Command>),
 }
 
@@ -196,7 +196,10 @@ fn parse_string_args(val: &[Data]) -> Vec<String> {
 
 impl Command {
     pub fn is_blocking(&self) -> bool {
-        matches!(self, Command::XRead { block: Some(_), .. })
+        matches!(
+            self,
+            Command::XRead { block: Some(_), .. } | Command::BLPop(..)
+        )
     }
 }
 
@@ -234,13 +237,13 @@ fn parse_blpop(val: &[Data]) -> Command {
             keys.push(arg.to_string());
         }
     }
-    let block = match val.get(val.len() - 1) {
+    let block = match val.last() {
         Some(Data::BStr(timeout)) if is_number(timeout) => {
             timeout.parse::<f64>().unwrap() * 1000f64
         }
         _ => return Command::Invalid,
     };
-    Command::BLPop(keys, Some(block as u64))
+    Command::BLPop(keys, block as u64)
 }
 
 fn get_raw_array_command(val: &[Data]) -> String {

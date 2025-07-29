@@ -9,8 +9,6 @@ use std::{
     ops::Bound,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::mpsc::Sender;
-use uuid::Uuid;
 
 pub struct StreamQueryResult {
     pub data: Option<Vec<StreamData>>,
@@ -59,6 +57,7 @@ impl InMemoryStore {
             .or_insert(vec![])
             .push(stream_entry);
         self.broadcast(&key).await;
+
         Ok(stream_id)
     }
 
@@ -103,25 +102,6 @@ impl InMemoryStore {
         StreamQueryResult {
             data: Some(streams).filter(|v| !v.is_empty()),
             max_ids,
-        }
-    }
-
-    pub async fn subscribe(&self, tx: Sender<String>) -> Uuid {
-        let id = Uuid::new_v4();
-        self.subscribers.lock().await.insert(id, tx);
-        id
-    }
-
-    pub async fn unsubscribe(&self, id: Uuid) {
-        let mut subscribers = self.subscribers.lock().await;
-        subscribers.remove(&id);
-    }
-
-    async fn broadcast(&self, key: &str) {
-        let mut subscribers = self.subscribers.lock().await;
-        subscribers.retain(|_, tx| !tx.is_closed());
-        for tx in subscribers.values() {
-            let _ = tx.try_send(key.to_string());
         }
     }
 }

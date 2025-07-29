@@ -14,7 +14,7 @@ use crate::{
     },
     protocol::{Data, RedisArray},
     server::{config, state::ServerState},
-    store::core::InMemoryStore,
+    store::{core::InMemoryStore, list::blpop_handler},
 };
 use std::sync::Arc;
 use tokio::{
@@ -106,14 +106,18 @@ impl ServerContext {
                 array_response(self.store.list_range(key, start, end).await)
             }
             Command::LLen(key) => int_response(self.store.list_len(key).await as i64),
-            Command::LPop(key, count) => match self.store.lpop(key, count).await {
+            Command::LPop(key, count) => match self.store.list_pop(key, count).await {
                 Some(values) if values.len() == 1 => bstring_response(&values[0]),
                 Some(values) => array_response(values),
                 None => null_response(),
             },
-            Command::BLPop(key, block_ms) => todo!(),
+            Command::BLPop(keys, block_ms) => {
+                match blpop_handler(&self.store, keys, block_ms).await {
+                    Some(value) => array_response(value),
+                    None => null_response(),
+                }
+            }
             Command::Multi => sstring_response("OK"),
-            //Command::Exec => error_response("EXEC without multi"),
             _ => null_response(),
         }
     }
