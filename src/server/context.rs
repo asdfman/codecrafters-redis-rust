@@ -26,6 +26,7 @@ pub struct ServerContext {
     pub store: InMemoryStore,
     pub state: Arc<Mutex<ServerState>>,
     pub replicas: Arc<Mutex<ReplicaManager>>,
+    pub channels: crate::channel::ChannelManager,
 }
 
 impl ServerContext {
@@ -52,7 +53,6 @@ impl ServerContext {
                 CommandResponse::Single(handlers::keys(&pattern, &self.store).await)
             }
             Command::Info => CommandResponse::Single(handlers::info(self).await),
-            Command::Psync(..) => CommandResponse::Stream,
             Command::Replconf => sstring_response("OK"),
             Command::ReplconfGetAck(_) => CommandResponse::ReplconfAck,
             Command::Wait {

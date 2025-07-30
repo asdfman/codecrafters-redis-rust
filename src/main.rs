@@ -1,20 +1,17 @@
 use anyhow::Result;
 use codecrafters_redis::{
-    command::{core::Command, response::CommandResponse},
+    command::core::Command,
     server::{
-        config::get_config_value, connection_handler::handle_connection, context::ServerContext,
+        config::get_config_value,
+        connection_handler::{ChannelType, ConnectionHandler},
+        context::ServerContext,
         replica::init_replica,
     },
 };
 use tokio::{
     net::TcpListener,
-    sync::{
-        mpsc::{self, Receiver},
-        oneshot,
-    },
+    sync::mpsc::{self, Receiver},
 };
-
-type ChannelType = (Command, Option<oneshot::Sender<CommandResponse>>);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -37,7 +34,7 @@ async fn main() -> Result<()> {
         let context = context.clone();
         let tx = tx.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(stream, tx, context).await {
+            if let Err(e) = ConnectionHandler::new(stream, tx, context).handle().await {
                 eprintln!("Connection ended with error: {e}");
             }
         });

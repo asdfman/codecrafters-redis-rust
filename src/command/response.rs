@@ -6,7 +6,6 @@ use crate::{
 pub enum CommandResponse {
     Single(String),
     Multiple(Vec<String>),
-    Stream,
     ReplconfAck,
 }
 
@@ -29,12 +28,18 @@ pub fn encode_resp_array(items: &[String]) -> String {
     result
 }
 
+pub fn encode_array_of_bstrings(items: &[String]) -> String {
+    encode_resp_array(
+        items
+            .iter()
+            .map(|s| encode_bstring(s.as_str()))
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )
+}
+
 pub fn replconf_getack(bytes: usize) -> String {
-    encode_resp_array(&[
-        encode_bstring("REPLCONF"),
-        encode_bstring("ACK"),
-        encode_bstring(&bytes.to_string()),
-    ])
+    encode_array_of_bstrings(&["REPLCONF".into(), "ACK".into(), bytes.to_string()])
 }
 
 pub fn psync_response() -> (String, Vec<u8>) {
@@ -63,6 +68,5 @@ pub fn error_response(err: &str) -> CommandResponse {
 }
 
 pub fn array_response(items: Vec<String>) -> CommandResponse {
-    let bstring_items: Vec<String> = items.into_iter().map(|s| encode_bstring(&s)).collect();
-    CommandResponse::Single(encode_resp_array(bstring_items.as_slice()))
+    CommandResponse::Single(encode_array_of_bstrings(items.as_slice()))
 }

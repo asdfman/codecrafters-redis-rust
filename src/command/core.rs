@@ -1,5 +1,6 @@
 use super::handlers::get_timestamp;
 use crate::{
+    common::parse_string_args,
     protocol::{Data, RedisArray},
     store::value::Value,
 };
@@ -64,6 +65,7 @@ pub enum Command {
     LPop(String, usize),
     BLPop(Vec<String>, u64),
     Transaction(Vec<Command>),
+    Subscribe(String),
 }
 
 impl From<Data> for Command {
@@ -177,21 +179,10 @@ impl From<&[Data]> for Command {
             }
             ("LPOP", [Data::BStr(key)]) => Command::LPop(key.into(), 1),
             ("BLPOP", [..]) => parse_blpop(&val[1..]),
+            ("SUBSCRIBE", [Data::BStr(channel)]) => Command::Subscribe(channel.into()),
             _ => Command::Invalid,
         }
     }
-}
-
-fn parse_string_args(val: &[Data]) -> Vec<String> {
-    val.iter()
-        .filter_map(|x| {
-            if let Data::BStr(s) = x {
-                Some(s.to_string())
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 impl Command {

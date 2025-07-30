@@ -56,11 +56,16 @@ impl ReplicaManager {
 
     pub async fn broadcast(&mut self, data: Vec<u8>) {
         self.clean_closed().await;
-        for (_, replica) in self.0.iter_mut() {
-            let mut lock = replica.lock().await;
-            let _ = lock.channel.send(data.clone()).await;
-            lock.expected_offset += data.len();
-        }
+        let send_futures = self
+            .0
+            .iter_mut()
+            .map(|(_, replica)| async {
+                let mut lock = replica.lock().await;
+                let _ = lock.channel.send(data.clone()).await;
+                lock.expected_offset += data.len();
+            })
+            .collect::<Vec<_>>();
+        let _ = join_all(send_futures).await;
     }
 
     pub fn count(&self) -> i64 {
