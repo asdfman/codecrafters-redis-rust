@@ -4,7 +4,6 @@ pub enum ChannelCommand {
     Subscribe(String),
     Unsubscribe(Vec<String>),
     Ping,
-    Publish(String, String),
     Invalid(String),
 }
 
@@ -26,9 +25,6 @@ impl From<&[Data]> for ChannelCommand {
             ("SUBSCRIBE", [Data::BStr(channel)]) => Self::Subscribe(channel.into()),
             ("UNSUBSCRIBE", ..) => Self::Unsubscribe(parse_string_args(val)),
             ("PING", []) => Self::Ping,
-            ("PUBLISH", [Data::BStr(channel), Data::BStr(message)]) => {
-                Self::Publish(channel.to_string(), message.to_string())
-            }
             (val, ..) => Self::Invalid(val.into()),
         }
     }

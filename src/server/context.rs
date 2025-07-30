@@ -116,6 +116,9 @@ impl ServerContext {
                 }
             }
             Command::Multi => sstring_response("OK"),
+            Command::Publish(channel, message) => {
+                int_response(self.channels.publish(channel, message).await as i64)
+            }
             _ => null_response(),
         }
     }

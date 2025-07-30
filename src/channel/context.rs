@@ -33,7 +33,6 @@ impl SubscriptionContext {
         match command {
             ChannelCommand::Subscribe(channel) => self.subscribe(channel).await,
             ChannelCommand::Unsubscribe(channels) => self.unsubscribe(channels).await,
-            ChannelCommand::Publish(channel, message) => self.publish(channel, message).await,
             ChannelCommand::Ping => Ok(encode_array_of_bstrings(&["pong".into(), "".to_string()])),
             ChannelCommand::Invalid(command) => {
                 Ok(encode_error(format!("Can't execute '{command}'").as_str()))
@@ -55,11 +54,6 @@ impl SubscriptionContext {
             ]
             .as_slice(),
         ))
-    }
-
-    async fn publish(&self, channel: String, message: String) -> Result<String> {
-        let count = self.manager.publish(channel, message).await;
-        Ok(encode_int(count as i64))
     }
 
     async fn subscribe(&self, channel: String) -> Result<String> {

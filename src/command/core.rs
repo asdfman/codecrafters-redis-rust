@@ -66,6 +66,7 @@ pub enum Command {
     BLPop(Vec<String>, u64),
     Transaction(Vec<Command>),
     Subscribe(String),
+    Publish(String, String),
 }
 
 impl From<Data> for Command {
@@ -180,6 +181,9 @@ impl From<&[Data]> for Command {
             ("LPOP", [Data::BStr(key)]) => Command::LPop(key.into(), 1),
             ("BLPOP", [..]) => parse_blpop(&val[1..]),
             ("SUBSCRIBE", [Data::BStr(channel)]) => Command::Subscribe(channel.into()),
+            ("PUBLISH", [Data::BStr(channel), Data::BStr(message)]) => {
+                Self::Publish(channel.to_string(), message.to_string())
+            }
             _ => Command::Invalid,
         }
     }
