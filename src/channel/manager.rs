@@ -67,5 +67,5 @@ impl ChannelManager {
 }
 
 fn get_message(channel: &str, message: &str) -> String {
-    encode_array_of_bstrings(vec!["MESSAGE".into(), channel.into(), message.into()].as_slice())
+    encode_array_of_bstrings(vec!["message".into(), channel.into(), message.into()].as_slice())
 }
