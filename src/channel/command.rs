@@ -23,7 +23,7 @@ impl From<&[Data]> for ChannelCommand {
         };
         match (command.to_uppercase().as_str(), &val[1..]) {
             ("SUBSCRIBE", [Data::BStr(channel)]) => Self::Subscribe(channel.into()),
-            ("UNSUBSCRIBE", ..) => Self::Unsubscribe(parse_string_args(val)),
+            ("UNSUBSCRIBE", ..) => Self::Unsubscribe(parse_string_args(&val[1..])),
             ("PING", []) => Self::Ping,
             (val, ..) => Self::Invalid(val.into()),
         }
