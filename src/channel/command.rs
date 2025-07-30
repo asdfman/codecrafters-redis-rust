@@ -5,14 +5,14 @@ pub enum ChannelCommand {
     Unsubscribe(Vec<String>),
     Ping,
     Publish(String, String),
-    Invalid,
+    Invalid(String),
 }
 
 impl From<Data> for ChannelCommand {
     fn from(val: Data) -> Self {
         match val {
             Data::Array(arr) => arr.as_slice().into(),
-            _ => Self::Invalid,
+            _ => Self::Invalid("Invalid command format".to_string()),
         }
     }
 }
@@ -20,7 +20,7 @@ impl From<Data> for ChannelCommand {
 impl From<&[Data]> for ChannelCommand {
     fn from(val: &[Data]) -> Self {
         let Some(Data::BStr(command)) = val.first() else {
-            return Self::Invalid;
+            return Self::Invalid("No command found".to_string());
         };
         match (command.to_uppercase().as_str(), &val[1..]) {
             ("SUBSCRIBE", [Data::BStr(channel)]) => Self::Subscribe(channel.into()),
@@ -29,7 +29,7 @@ impl From<&[Data]> for ChannelCommand {
             ("PUBLISH", [Data::BStr(channel), Data::BStr(message)]) => {
                 Self::Publish(channel.to_string(), message.to_string())
             }
-            _ => Self::Invalid,
+            (val, ..) => Self::Invalid(val.into()),
         }
     }
 }

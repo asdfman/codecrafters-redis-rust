@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::{
     command::response::{encode_array_of_bstrings, encode_resp_array},
-    common::{encode_bstring, encode_int, null},
+    common::{encode_bstring, encode_error, encode_int},
 };
 
 use super::{ChannelCommand, ChannelManager};
@@ -35,7 +35,9 @@ impl SubscriptionContext {
             ChannelCommand::Unsubscribe(channels) => self.unsubscribe(channels).await,
             ChannelCommand::Publish(channel, message) => self.publish(channel, message).await,
             ChannelCommand::Ping => Ok(encode_array_of_bstrings(&["pong".into(), "".to_string()])),
-            ChannelCommand::Invalid => Ok(null()),
+            ChannelCommand::Invalid(command) => {
+                Ok(encode_error(format!("Can't execute '{command}'").as_str()))
+            }
         }
     }
 
