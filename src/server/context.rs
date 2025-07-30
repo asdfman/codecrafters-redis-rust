@@ -12,7 +12,6 @@ use crate::{
         },
         stream_handlers,
     },
-    protocol::{Data, RedisArray},
     server::{config, state::ServerState},
     store::{core::InMemoryStore, list::blpop_handler},
 };
@@ -45,11 +44,10 @@ impl ServerContext {
                 self.propagate(raw_command).await;
                 sstring_response("OK")
             }
-            Command::ConfigGet(key) => config::get_config_value(&key)
-                .map(|x| {
-                    CommandResponse::Single(RedisArray(vec![Data::BStr(key), Data::BStr(x)]).into())
-                })
-                .unwrap_or(null_response()),
+            Command::ConfigGet(key) => match config::get_config_value(&key) {
+                Some(value) => array_response(vec![key, value]),
+                _ => null_response(),
+            },
             Command::Keys(pattern) => {
                 CommandResponse::Single(handlers::keys(&pattern, &self.store).await)
             }
