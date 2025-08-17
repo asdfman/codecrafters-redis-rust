@@ -126,6 +126,9 @@ impl ServerContext {
                 Some(rank) => int_response(rank as i64),
                 _ => null_response(),
             },
+            Command::ZRange { key, start, end } => {
+                array_response(self.store.zrange(key, start, end).await.unwrap_or(vec![]))
+            }
             _ => null_response(),
         }
     }

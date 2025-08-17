@@ -2,6 +2,8 @@ use hashbrown::HashMap;
 use rust_decimal::Decimal;
 use skiplist::OrderedSkipList;
 
+use crate::common::convert_range_indices;
+
 use super::{
     core::InMemoryStore,
     value::{Value, ValueWrapper},
@@ -51,6 +53,17 @@ impl SortedSet {
         let score = self.set.get(member)?;
         self.scores.index_of(&(*score, member.to_string()))
     }
+
+    pub fn list_members(&self, start: isize, end: isize) -> Option<Vec<String>> {
+        let (start, end) = convert_range_indices(start, end, self.scores.len() as isize)?;
+        Some(
+            self.scores
+                .index_range(start..end + 1)
+                .map(|(_, member)| member)
+                .cloned()
+                .collect(),
+        )
+    }
 }
 
 impl InMemoryStore {
@@ -70,16 +83,23 @@ impl InMemoryStore {
 
     pub async fn zrank(&self, key: String, member: String) -> Option<usize> {
         let data = self.data.lock().await;
-        if let ValueWrapper {
-            value: Value::SortedSet(set),
-            ..
-        } = data.get(&key)?
-        {
-            set.get_rank(&member)
-        } else {
-            None
-        }
+        let set = get_sorted_set(&data, &key)?;
+        set.get_rank(&member)
     }
 
-    // pub async fn zrange(&self, key: String, start: isize, end: isize) ->
+    pub async fn zrange(&self, key: String, start: isize, end: isize) -> Option<Vec<String>> {
+        let data = self.data.lock().await;
+        let set = get_sorted_set(&data, &key)?;
+        set.list_members(start, end)
+    }
+}
+
+fn get_sorted_set<'a>(data: &'a HashMap<String, ValueWrapper>, key: &str) -> Option<&'a SortedSet> {
+    match data.get(key) {
+        Some(ValueWrapper {
+            value: Value::SortedSet(set),
+            ..
+        }) => Some(set),
+        _ => None,
+    }
 }
