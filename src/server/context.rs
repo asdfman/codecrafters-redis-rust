@@ -119,6 +119,9 @@ impl ServerContext {
             Command::Publish(channel, message) => {
                 int_response(self.channels.publish(channel, message).await as i64)
             }
+            Command::ZAdd { key, score, member } => {
+                int_response(self.store.add_sorted_set(key, score, member).await)
+            }
             _ => null_response(),
         }
     }

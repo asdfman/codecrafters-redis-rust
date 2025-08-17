@@ -2,20 +2,35 @@ use std::collections::BTreeMap;
 
 use crate::rdb::rdb_file::RdbValue;
 
-#[derive(Clone, Debug, PartialEq)]
+use super::sorted_set::SortedSet;
+
 pub enum Value {
     String(String),
     Integer(i64),
     List(Vec<String>),
     Stream(BTreeMap<String, Vec<(String, String)>>),
+    SortedSet(SortedSet),
 }
+
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        match self {
+            Value::String(s) => Value::String(s.clone()),
+            Value::Integer(i) => Value::Integer(*i),
+            Value::List(l) => Value::List(l.clone()),
+            Value::Stream(s) => Value::Stream(s.clone()),
+            _ => panic!("Clone not implemented"),
+        }
+    }
+}
+
 impl From<String> for Value {
     fn from(s: String) -> Self {
         Value::String(s)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ValueWrapper {
     pub value: Value,
     pub expiry: Option<u64>,

@@ -32,3 +32,22 @@ pub fn parse_string_args(val: &[Data]) -> Vec<String> {
         })
         .collect()
 }
+
+pub fn convert_range_indices(
+    mut start: isize,
+    mut end: isize,
+    len: isize,
+) -> Option<(usize, usize)> {
+    if start < 0 {
+        start += len;
+    }
+    if end < 0 {
+        end += len;
+    }
+    start = start.clamp(0, len - 1);
+    end = end.clamp(0, len - 1);
+    if start > end {
+        return None;
+    }
+    Some((start as usize, end as usize))
+}

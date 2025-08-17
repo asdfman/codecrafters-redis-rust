@@ -1,3 +1,5 @@
+use crate::common::convert_range_indices;
+
 use super::{
     core::InMemoryStore,
     subscribe::wait_for_new_data,
@@ -29,28 +31,18 @@ impl InMemoryStore {
         }
     }
 
-    pub async fn list_range(&self, key: String, mut start: isize, mut end: isize) -> Vec<String> {
+    pub async fn list_range(&self, key: String, start: isize, end: isize) -> Vec<String> {
         if let Some(ValueWrapper {
             value: Value::List(list),
             ..
         }) = self.data.lock().await.get(&key)
         {
             let len = list.len() as isize;
-            if start < 0 {
-                start += len;
+            if let Some((start, end)) = convert_range_indices(start, end, len) {
+                return list[start..=end].to_vec();
             }
-            if end < 0 {
-                end += len;
-            }
-            start = start.clamp(0, len - 1);
-            end = end.clamp(0, len - 1);
-            if start > end {
-                return vec![];
-            }
-            list[start as usize..=end as usize].to_vec()
-        } else {
-            vec![]
         }
+        vec![]
     }
 
     pub async fn list_len(&self, key: String) -> usize {

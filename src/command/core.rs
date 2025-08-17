@@ -1,3 +1,5 @@
+use rust_decimal::Decimal;
+
 use super::handlers::get_timestamp;
 use crate::{
     common::parse_string_args,
@@ -5,7 +7,7 @@ use crate::{
     store::value::Value,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Command {
     Ping,
     Echo(String),
@@ -67,6 +69,11 @@ pub enum Command {
     Transaction(Vec<Command>),
     Subscribe(String),
     Publish(String, String),
+    ZAdd {
+        key: String,
+        score: Decimal,
+        member: String,
+    },
 }
 
 impl From<Data> for Command {
@@ -184,6 +191,11 @@ impl From<&[Data]> for Command {
             ("PUBLISH", [Data::BStr(channel), Data::BStr(message)]) => {
                 Self::Publish(channel.to_string(), message.to_string())
             }
+            ("ZADD", [Data::BStr(key), Data::BStr(score), Data::BStr(member)]) => Self::ZAdd {
+                key: key.clone(),
+                score: Decimal::from_str_exact(score).unwrap_or_default(),
+                member: member.clone(),
+            },
             _ => Command::Invalid,
         }
     }
