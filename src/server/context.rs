@@ -120,7 +120,7 @@ impl ServerContext {
                 int_response(self.channels.publish(channel, message).await as i64)
             }
             Command::ZAdd { key, score, member } => {
-                int_response(self.store.add_sorted_set(key, score, member).await)
+                int_response(self.store.zadd(key, score, member).await)
             }
             Command::ZRank { key, member } => match self.store.zrank(key, member).await {
                 Some(rank) => int_response(rank as i64),

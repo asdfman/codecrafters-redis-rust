@@ -70,18 +70,10 @@ impl SortedSet {
 }
 
 impl InMemoryStore {
-    pub async fn add_sorted_set(&self, key: String, score: Decimal, member: String) -> i64 {
+    pub async fn zadd(&self, key: String, score: Decimal, member: String) -> i64 {
         let mut data = self.data.lock().await;
-        if let ValueWrapper {
-            value: Value::SortedSet(set),
-            ..
-        } = data.entry(key.clone()).or_insert(ValueWrapper {
-            value: Value::SortedSet(SortedSet::default()),
-            expiry: None,
-        }) {
-            return set.insert(member, score);
-        }
-        0
+        let set = get_sorted_set_mut(&mut data, key);
+        set.insert(member, score)
     }
 
     pub async fn zrem(&self, key: String, member: String) -> i64 {
