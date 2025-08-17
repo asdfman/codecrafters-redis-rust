@@ -74,6 +74,15 @@ pub enum Command {
         score: Decimal,
         member: String,
     },
+    ZRank {
+        key: String,
+        member: String,
+    },
+    ZRange {
+        key: String,
+        start: isize,
+        end: isize,
+    },
 }
 
 impl From<Data> for Command {
@@ -196,6 +205,19 @@ impl From<&[Data]> for Command {
                 score: Decimal::from_str_exact(score).unwrap_or_default(),
                 member: member.clone(),
             },
+            ("ZRANK", [Data::BStr(key), Data::BStr(member)]) => Self::ZRank {
+                key: key.into(),
+                member: member.into(),
+            },
+            ("ZRANGE", [Data::BStr(key), Data::BStr(start), Data::BStr(end)])
+                if is_number(start) && is_number(end) =>
+            {
+                Command::ZRange {
+                    key: key.into(),
+                    start: start.parse::<isize>().unwrap(),
+                    end: end.parse::<isize>().unwrap(),
+                }
+            }
             _ => Command::Invalid,
         }
     }

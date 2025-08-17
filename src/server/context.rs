@@ -122,6 +122,10 @@ impl ServerContext {
             Command::ZAdd { key, score, member } => {
                 int_response(self.store.add_sorted_set(key, score, member).await)
             }
+            Command::ZRank { key, member } => match self.store.zrank(key, member).await {
+                Some(rank) => int_response(rank as i64),
+                _ => null_response(),
+            },
             _ => null_response(),
         }
     }

@@ -48,8 +48,8 @@ impl SortedSet {
     }
 
     pub fn get_rank(&self, member: &str) -> Option<usize> {
-        let entry = self.set.get(member)?;
-        self.scores.index_of(&(*entry, member.to_string()))
+        let score = self.set.get(member)?;
+        self.scores.index_of(&(*score, member.to_string()))
     }
 }
 
@@ -67,4 +67,19 @@ impl InMemoryStore {
         }
         0
     }
+
+    pub async fn zrank(&self, key: String, member: String) -> Option<usize> {
+        let data = self.data.lock().await;
+        if let ValueWrapper {
+            value: Value::SortedSet(set),
+            ..
+        } = data.get(&key)?
+        {
+            set.get_rank(&member)
+        } else {
+            None
+        }
+    }
+
+    // pub async fn zrange(&self, key: String, start: isize, end: isize) ->
 }
