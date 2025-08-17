@@ -129,6 +129,12 @@ impl ServerContext {
             Command::ZRange { key, start, end } => {
                 array_response(self.store.zrange(key, start, end).await.unwrap_or(vec![]))
             }
+            Command::ZCard(key) => int_response(self.store.zcard(key).await.unwrap_or(0)),
+            Command::ZScore(key, member) => match self.store.zscore(key, member).await {
+                Some(score) => bstring_response(score.to_string().as_ref()),
+                _ => null_response(),
+            },
+            Command::ZRem(key, member) => int_response(self.store.zrem(key, member).await),
             _ => null_response(),
         }
     }

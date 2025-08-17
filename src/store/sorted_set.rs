@@ -39,14 +39,17 @@ impl SortedSet {
         updated_count
     }
 
-    pub fn remove(&mut self, member: String) {
+    pub fn remove(&mut self, member: String) -> i64 {
         if let Some(score) = self.set.remove(&member) {
             self.scores.remove(&(score, member));
+            1
+        } else {
+            0
         }
     }
 
-    pub fn get_score(&self, member: &str) -> Option<&Decimal> {
-        self.set.get(member)
+    pub fn get_score(&self, member: &str) -> Option<Decimal> {
+        self.set.get(member).cloned()
     }
 
     pub fn get_rank(&self, member: &str) -> Option<usize> {
@@ -81,6 +84,23 @@ impl InMemoryStore {
         0
     }
 
+    pub async fn zrem(&self, key: String, member: String) -> i64 {
+        let mut data = self.data.lock().await;
+        let set = get_sorted_set_mut(&mut data, key);
+        set.remove(member)
+    }
+
+    pub async fn zscore(&self, key: String, member: String) -> Option<Decimal> {
+        let data = self.data.lock().await;
+        let set = get_sorted_set(&data, &key)?;
+        set.get_score(&member)
+    }
+
+    pub async fn zcard(&self, key: String) -> Option<i64> {
+        let data = self.data.lock().await;
+        Some(get_sorted_set(&data, &key)?.scores.len() as i64)
+    }
+
     pub async fn zrank(&self, key: String, member: String) -> Option<usize> {
         let data = self.data.lock().await;
         let set = get_sorted_set(&data, &key)?;
@@ -101,5 +121,18 @@ fn get_sorted_set<'a>(data: &'a HashMap<String, ValueWrapper>, key: &str) -> Opt
             ..
         }) => Some(set),
         _ => None,
+    }
+}
+
+fn get_sorted_set_mut(data: &mut HashMap<String, ValueWrapper>, key: String) -> &mut SortedSet {
+    match data.entry(key).or_insert(ValueWrapper {
+        value: Value::SortedSet(SortedSet::default()),
+        expiry: None,
+    }) {
+        ValueWrapper {
+            value: Value::SortedSet(set),
+            ..
+        } => set,
+        _ => unreachable!("Should be a SortedSet"),
     }
 }

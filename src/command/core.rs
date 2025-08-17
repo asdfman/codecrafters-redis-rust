@@ -83,6 +83,9 @@ pub enum Command {
         start: isize,
         end: isize,
     },
+    ZCard(String),
+    ZScore(String, String),
+    ZRem(String, String),
 }
 
 impl From<Data> for Command {
@@ -217,6 +220,13 @@ impl From<&[Data]> for Command {
                     start: start.parse::<isize>().unwrap(),
                     end: end.parse::<isize>().unwrap(),
                 }
+            }
+            ("ZCARD", [Data::BStr(key)]) => Command::ZCard(key.into()),
+            ("ZSCORE", [Data::BStr(key), Data::BStr(member)]) => {
+                Command::ZScore(key.into(), member.into())
+            }
+            ("ZREM", [Data::BStr(key), Data::BStr(member)]) => {
+                Command::ZRem(key.into(), member.into())
             }
             _ => Command::Invalid,
         }
