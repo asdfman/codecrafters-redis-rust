@@ -16,7 +16,7 @@ impl Default for SortedSet {
     fn default() -> Self {
         let mut scores = OrderedSkipList::new();
         unsafe {
-            scores.sort_by(|a: &(Decimal, String), b| a.cmp(b).reverse());
+            scores.sort_by(|a: &(Decimal, String), b| a.cmp(b));
         }
         Self {
             set: HashMap::new(),
