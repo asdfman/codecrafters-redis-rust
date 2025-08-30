@@ -140,7 +140,12 @@ impl ServerContext {
                 longitude,
                 latitude,
                 member,
-            } => int_response(self.store.geoadd(key, longitude, latitude, member).await),
+            } => match crate::store::geo::validate(longitude, latitude) {
+                Some((long, lat)) => int_response(self.store.geoadd(key, long, lat, member).await),
+                None => error_response(&format!(
+                    "invalid longitude,latitude pair {longitude},{latitude}"
+                )),
+            },
             _ => null_response(),
         }
     }

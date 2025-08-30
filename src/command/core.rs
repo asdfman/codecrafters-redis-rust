@@ -87,8 +87,8 @@ pub enum Command {
     ZRem(String, String),
     Geoadd {
         key: String,
-        longitude: Decimal,
-        latitude: Decimal,
+        longitude: f64,
+        latitude: f64,
         member: String,
     },
     Geopos {
@@ -102,8 +102,8 @@ pub enum Command {
     },
     Geosearch {
         key: String,
-        long: Decimal,
-        lat: Decimal,
+        long: f64,
+        lat: f64,
         radius: Decimal,
         unit: String,
     },
@@ -254,8 +254,8 @@ impl From<&[Data]> for Command {
                 [Data::BStr(key), Data::BStr(long), Data::BStr(lat), Data::BStr(member)],
             ) => Self::Geoadd {
                 key: key.into(),
-                longitude: Decimal::from_str_exact(long).unwrap_or_default(),
-                latitude: Decimal::from_str_exact(lat).unwrap_or_default(),
+                longitude: long.parse::<f64>().unwrap_or_default(),
+                latitude: lat.parse::<f64>().unwrap_or_default(),
                 member: member.into(),
             },
             ("GEOPOS", [Data::BStr(key), Data::BStr(member)]) => Self::Geopos {
@@ -274,8 +274,8 @@ impl From<&[Data]> for Command {
                 [Data::BStr(key), _, Data::BStr(long), Data::BStr(lat), _, Data::BStr(radius), Data::BStr(unit)],
             ) => Self::Geosearch {
                 key: key.into(),
-                long: Decimal::from_str_exact(long).unwrap_or_default(),
-                lat: Decimal::from_str_exact(lat).unwrap_or_default(),
+                long: long.parse::<f64>().unwrap_or_default(),
+                lat: lat.parse::<f64>().unwrap_or_default(),
                 radius: Decimal::from_str_exact(radius).unwrap_or_default(),
                 unit: unit.into(),
             },
