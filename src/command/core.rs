@@ -1,11 +1,10 @@
-use rust_decimal::Decimal;
-
 use super::handlers::get_timestamp;
 use crate::{
     common::parse_string_args,
     protocol::{Data, RedisArray},
     store::value::Value,
 };
+use rust_decimal::Decimal;
 
 #[derive(Clone)]
 pub enum Command {
@@ -86,6 +85,28 @@ pub enum Command {
     ZCard(String),
     ZScore(String, String),
     ZRem(String, String),
+    Geoadd {
+        key: String,
+        longitude: Decimal,
+        latitude: Decimal,
+        member: String,
+    },
+    Geopos {
+        key: String,
+        member: String,
+    },
+    Geodist {
+        key: String,
+        first_member: String,
+        second_member: String,
+    },
+    Geosearch {
+        key: String,
+        long: Decimal,
+        lat: Decimal,
+        radius: Decimal,
+        unit: String,
+    },
 }
 
 impl From<Data> for Command {
@@ -228,6 +249,36 @@ impl From<&[Data]> for Command {
             ("ZREM", [Data::BStr(key), Data::BStr(member)]) => {
                 Command::ZRem(key.into(), member.into())
             }
+            (
+                "GEOADD",
+                [Data::BStr(key), Data::BStr(long), Data::BStr(lat), Data::BStr(member)],
+            ) => Self::Geoadd {
+                key: key.into(),
+                longitude: Decimal::from_str_exact(long).unwrap_or_default(),
+                latitude: Decimal::from_str_exact(lat).unwrap_or_default(),
+                member: member.into(),
+            },
+            ("GEOPOS", [Data::BStr(key), Data::BStr(member)]) => Self::Geopos {
+                key: key.into(),
+                member: member.into(),
+            },
+            ("GEODIST", [Data::BStr(key), Data::BStr(member), Data::BStr(member_two)]) => {
+                Self::Geodist {
+                    key: key.into(),
+                    first_member: member.into(),
+                    second_member: member_two.into(),
+                }
+            }
+            (
+                "GEOSEARCH",
+                [Data::BStr(key), _, Data::BStr(long), Data::BStr(lat), _, Data::BStr(radius), Data::BStr(unit)],
+            ) => Self::Geosearch {
+                key: key.into(),
+                long: Decimal::from_str_exact(long).unwrap_or_default(),
+                lat: Decimal::from_str_exact(lat).unwrap_or_default(),
+                radius: Decimal::from_str_exact(radius).unwrap_or_default(),
+                unit: unit.into(),
+            },
             _ => Command::Invalid,
         }
     }

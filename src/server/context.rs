@@ -7,8 +7,8 @@ use crate::{
         core::Command,
         handlers::{self},
         response::{
-            array_response, bstring_response, error_response, int_response, null_response,
-            sstring_response, CommandResponse,
+            array_response, bstring_response, error_response, int_response, null_array_response,
+            null_response, sstring_response, CommandResponse,
         },
         stream_handlers,
     },
@@ -76,7 +76,7 @@ impl ServerContext {
             Command::XRead { streams, block } => {
                 stream_handlers::xread(streams, block, &self.store)
                     .await
-                    .unwrap_or(null_response())
+                    .unwrap_or(null_array_response())
             }
             Command::Incr { key, raw_command } => {
                 let value = self.store.incr(key.clone()).await;
@@ -112,7 +112,7 @@ impl ServerContext {
             Command::BLPop(keys, block_ms) => {
                 match blpop_handler(&self.store, keys, block_ms).await {
                     Some(value) => array_response(value),
-                    None => null_response(),
+                    None => null_array_response(),
                 }
             }
             Command::Multi => sstring_response("OK"),
@@ -135,6 +135,12 @@ impl ServerContext {
                 _ => null_response(),
             },
             Command::ZRem(key, member) => int_response(self.store.zrem(key, member).await),
+            Command::Geoadd {
+                key,
+                longitude,
+                latitude,
+                member,
+            } => int_response(self.store.geoadd(key, longitude, latitude, member).await),
             _ => null_response(),
         }
     }

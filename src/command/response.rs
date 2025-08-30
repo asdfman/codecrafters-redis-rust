@@ -59,6 +59,10 @@ pub fn null_response() -> CommandResponse {
     CommandResponse::Single(null())
 }
 
+pub fn null_array_response() -> CommandResponse {
+    CommandResponse::Single("*-1\r\n".to_string())
+}
+
 pub fn int_response(val: i64) -> CommandResponse {
     CommandResponse::Single(encode_int(val))
 }
