@@ -154,10 +154,7 @@ impl ServerContext {
                 point,
                 radius,
                 unit,
-            } => match self.store.geosearch(key, point, radius, unit).await {
-                res if res.is_empty() => null_array_response(),
-                res => array_response(res),
-            },
+            } => array_response(self.store.geosearch(key, point, radius, unit).await),
             _ => null_response(),
         }
     }

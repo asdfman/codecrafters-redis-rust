@@ -1,11 +1,8 @@
-use std::f64::consts;
-
 use rust_decimal::{
     dec,
     prelude::{FromPrimitive, ToPrimitive},
     Decimal, MathematicalOps,
 };
-const PI: Decimal = dec!(3.1415926535897932384626433833);
 const MIN_LAT: f64 = -85.05112878;
 const MAX_LAT: f64 = 85.05112878;
 const LAT_RANGE: f64 = MAX_LAT - MIN_LAT;
@@ -134,36 +131,13 @@ pub fn decode(score: Decimal) -> Point {
 //     Point { lat, lon }
 // }
 
-// pub fn haversine(origin: Point, destination: Point) -> f64 {
-//     const EARTH_RADIUS: f64 = 6372797.560856;
-//
-//     // let rads_per_deg = PI / dec!(180);
-//     let two = dec!(2);
-//
-//     let to_rad = |dec: Decimal| dec * (PI / dec!(180));
-//
-//     let lat1 = to_rad(Decimal::from_f64(origin.lat).unwrap());
-//     let lat2 = to_rad(Decimal::from_f64(destination.lat).unwrap());
-//     let d_lat = lat2 - lat1;
-//     let d_lon = to_rad(Decimal::from_f64(destination.lon).unwrap())
-//         - to_rad(Decimal::from_f64(origin.lon).unwrap());
-//
-//     let a = (d_lat / two).sin().powi(2) + (d_lon / two).sin().powi(2) * lat1.cos() * lat2.cos();
-//     let c = 2.0 * a.to_f64().unwrap().sqrt().asin();
-//     EARTH_RADIUS * c
-// }
-
-pub fn haversine(origin: Point, destination: Point) -> f64 {
+pub fn haversine(origin: &Point, destination: &Point) -> f64 {
     const EARTH_RADIUS: f64 = 6372797.560856;
-    let to_rad = |dec: f64| dec * consts::PI / 180.0;
 
-    let lat1 = to_rad(origin.lat);
-    let lat2 = to_rad(destination.lat);
-    let lon1 = to_rad(origin.lon);
-    let lon2 = to_rad(destination.lon);
-
+    let lat1 = origin.lat.to_radians();
+    let lat2 = destination.lat.to_radians();
     let d_lat = lat2 - lat1;
-    let d_lon = lon2 - lon1;
+    let d_lon = (destination.lon - origin.lon).to_radians();
 
     let a = (d_lat / 2.0).sin().powi(2) + (d_lon / 2.0).sin().powi(2) * lat1.cos() * lat2.cos();
     let c = 2.0 * a.sqrt().asin();

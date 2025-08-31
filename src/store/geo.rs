@@ -1,6 +1,7 @@
 use crate::store::{
     coords::{decode, encode, haversine, Point},
     core::InMemoryStore,
+    sorted_set::get_sorted_set,
 };
 
 impl InMemoryStore {
@@ -28,16 +29,34 @@ impl InMemoryStore {
     pub async fn geodist(&self, key: String, from: String, to: String) -> Option<String> {
         let from = self.zscore(key.clone(), from).await.map(decode)?;
         let to = self.zscore(key.clone(), to).await.map(decode)?;
-        Some(haversine(from, to).to_string())
+        Some(haversine(&from, &to).to_string())
     }
 
-    pub(crate) async fn geosearch(
+    pub async fn geosearch(
         &self,
         key: String,
         point: Point,
         radius: f64,
         unit: String,
     ) -> Vec<String> {
-        todo!()
+        let mut res = vec![];
+        let data = self.data.lock().await;
+        let Some(set) = get_sorted_set(&data, &key) else {
+            return res;
+        };
+        for (member, score) in set.set.iter() {
+            let member_point = decode(*score);
+            let distance = haversine(&point, &member_point);
+            let distance_in_unit = match unit.to_lowercase().as_str() {
+                "km" => distance / 1000.0,
+                "mi" => distance * 0.621371 * 1000.0,
+                "ft" => distance * 3280.84 * 1000.0,
+                _ => distance,
+            };
+            if distance_in_unit <= radius {
+                res.push(member.clone());
+            }
+        }
+        res
     }
 }

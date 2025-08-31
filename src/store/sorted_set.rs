@@ -106,7 +106,10 @@ impl InMemoryStore {
     }
 }
 
-fn get_sorted_set<'a>(data: &'a HashMap<String, ValueWrapper>, key: &str) -> Option<&'a SortedSet> {
+pub fn get_sorted_set<'a>(
+    data: &'a HashMap<String, ValueWrapper>,
+    key: &str,
+) -> Option<&'a SortedSet> {
     match data.get(key) {
         Some(ValueWrapper {
             value: Value::SortedSet(set),
