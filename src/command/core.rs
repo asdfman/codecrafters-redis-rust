@@ -102,7 +102,7 @@ pub enum Command {
     Geosearch {
         key: String,
         point: Point,
-        radius: Decimal,
+        radius: f64,
         unit: String,
     },
 }
@@ -272,7 +272,7 @@ impl From<&[Data]> for Command {
             ) => Self::Geosearch {
                 key: key.into(),
                 point: Point::new(lat, long),
-                radius: Decimal::from_str_exact(radius).unwrap_or_default(),
+                radius: radius.parse::<f64>().unwrap_or_default(),
                 unit: unit.into(),
             },
             _ => Command::Invalid,

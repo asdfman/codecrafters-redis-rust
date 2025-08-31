@@ -30,4 +30,14 @@ impl InMemoryStore {
         let to = self.zscore(key.clone(), to).await.map(decode)?;
         Some(haversine(from, to).to_string())
     }
+
+    pub(crate) async fn geosearch(
+        &self,
+        key: String,
+        point: Point,
+        radius: f64,
+        unit: String,
+    ) -> Vec<String> {
+        todo!()
+    }
 }

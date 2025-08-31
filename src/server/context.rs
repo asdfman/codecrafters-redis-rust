@@ -149,6 +149,15 @@ impl ServerContext {
                 Some(dist) => bstring_response(&dist),
                 None => null_response(),
             },
+            Command::Geosearch {
+                key,
+                point,
+                radius,
+                unit,
+            } => match self.store.geosearch(key, point, radius, unit).await {
+                res if res.is_empty() => null_array_response(),
+                res => array_response(res),
+            },
             _ => null_response(),
         }
     }
