@@ -2,7 +2,7 @@ use super::handlers::get_timestamp;
 use crate::{
     common::parse_string_args,
     protocol::{Data, RedisArray},
-    store::value::Value,
+    store::{coords::Point, value::Value},
 };
 use rust_decimal::Decimal;
 
@@ -87,8 +87,7 @@ pub enum Command {
     ZRem(String, String),
     Geoadd {
         key: String,
-        longitude: f64,
-        latitude: f64,
+        point: Point,
         member: String,
     },
     Geopos {
@@ -97,13 +96,12 @@ pub enum Command {
     },
     Geodist {
         key: String,
-        first_member: String,
-        second_member: String,
+        from: String,
+        to: String,
     },
     Geosearch {
         key: String,
-        long: f64,
-        lat: f64,
+        point: Point,
         radius: Decimal,
         unit: String,
     },
@@ -254,8 +252,7 @@ impl From<&[Data]> for Command {
                 [Data::BStr(key), Data::BStr(long), Data::BStr(lat), Data::BStr(member)],
             ) => Self::Geoadd {
                 key: key.into(),
-                longitude: long.parse::<f64>().unwrap_or_default(),
-                latitude: lat.parse::<f64>().unwrap_or_default(),
+                point: Point::new(lat, long),
                 member: member.into(),
             },
             ("GEOPOS", [Data::BStr(key), ..]) => Self::Geopos {
@@ -265,8 +262,8 @@ impl From<&[Data]> for Command {
             ("GEODIST", [Data::BStr(key), Data::BStr(member), Data::BStr(member_two)]) => {
                 Self::Geodist {
                     key: key.into(),
-                    first_member: member.into(),
-                    second_member: member_two.into(),
+                    from: member.into(),
+                    to: member_two.into(),
                 }
             }
             (
@@ -274,8 +271,7 @@ impl From<&[Data]> for Command {
                 [Data::BStr(key), _, Data::BStr(long), Data::BStr(lat), _, Data::BStr(radius), Data::BStr(unit)],
             ) => Self::Geosearch {
                 key: key.into(),
-                long: long.parse::<f64>().unwrap_or_default(),
-                lat: lat.parse::<f64>().unwrap_or_default(),
+                point: Point::new(lat, long),
                 radius: Decimal::from_str_exact(radius).unwrap_or_default(),
                 unit: unit.into(),
             },

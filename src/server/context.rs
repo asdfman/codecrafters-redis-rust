@@ -135,18 +135,19 @@ impl ServerContext {
                 _ => null_response(),
             },
             Command::ZRem(key, member) => int_response(self.store.zrem(key, member).await),
-            Command::Geoadd {
-                key,
-                longitude,
-                latitude,
-                member,
-            } => match crate::store::geo_score::validate_coords(latitude, longitude) {
-                None => int_response(self.store.geoadd(key, latitude, longitude, member).await),
-                Some(err) => error_response(&err),
-            },
+            Command::Geoadd { key, point, member } => {
+                match crate::store::coords::validate_coords(&point) {
+                    None => int_response(self.store.geoadd(key, point, member).await),
+                    Some(err) => error_response(&err),
+                }
+            }
             Command::Geopos { key, members } => match self.store.geopos(key, members).await {
                 arr if arr.is_empty() => null_array_response(),
                 arr => array_of_arrays_response(arr),
+            },
+            Command::Geodist { key, from, to } => match self.store.geodist(key, from, to).await {
+                Some(dist) => bstring_response(&dist),
+                None => null_response(),
             },
             _ => null_response(),
         }

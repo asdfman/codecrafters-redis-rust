@@ -1,6 +1,6 @@
+pub mod coords;
 pub mod core;
 pub mod geo;
-pub mod geo_score;
 pub mod list;
 pub mod sorted_set;
 pub mod stream;
