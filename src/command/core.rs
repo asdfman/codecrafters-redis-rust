@@ -93,7 +93,7 @@ pub enum Command {
     },
     Geopos {
         key: String,
-        member: String,
+        members: Vec<String>,
     },
     Geodist {
         key: String,
@@ -258,9 +258,9 @@ impl From<&[Data]> for Command {
                 latitude: lat.parse::<f64>().unwrap_or_default(),
                 member: member.into(),
             },
-            ("GEOPOS", [Data::BStr(key), Data::BStr(member)]) => Self::Geopos {
+            ("GEOPOS", [Data::BStr(key)]) => Self::Geopos {
                 key: key.into(),
-                member: member.into(),
+                members: parse_string_args(&val[2..]),
             },
             ("GEODIST", [Data::BStr(key), Data::BStr(member), Data::BStr(member_two)]) => {
                 Self::Geodist {

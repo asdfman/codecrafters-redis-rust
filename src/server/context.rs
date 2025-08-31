@@ -7,8 +7,8 @@ use crate::{
         core::Command,
         handlers::{self},
         response::{
-            array_response, bstring_response, error_response, int_response, null_array_response,
-            null_response, sstring_response, CommandResponse,
+            array_of_arrays_response, array_response, bstring_response, error_response,
+            int_response, null_array_response, null_response, sstring_response, CommandResponse,
         },
         stream_handlers,
     },
@@ -143,6 +143,10 @@ impl ServerContext {
             } => match crate::store::geo_score::validate_coords(latitude, longitude) {
                 None => int_response(self.store.geoadd(key, latitude, longitude, member).await),
                 Some(err) => error_response(&err),
+            },
+            Command::Geopos { key, members } => match self.store.geopos(key, members).await {
+                arr if arr.is_empty() => null_array_response(),
+                arr => array_of_arrays_response(arr),
             },
             _ => null_response(),
         }

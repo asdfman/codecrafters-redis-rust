@@ -74,3 +74,12 @@ pub fn error_response(err: &str) -> CommandResponse {
 pub fn array_response(items: Vec<String>) -> CommandResponse {
     CommandResponse::Single(encode_array_of_bstrings(items.as_slice()))
 }
+
+pub fn array_of_arrays_response(items: Vec<Vec<String>>) -> CommandResponse {
+    let mut result = String::new();
+    result.push_str(&format!("*{}\r\n", items.len()));
+    for item in items {
+        result.push_str(&encode_resp_array(&item));
+    }
+    CommandResponse::Single(result)
+}
