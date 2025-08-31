@@ -18,6 +18,8 @@ impl InMemoryStore {
                 .map(|(lat, long)| vec![lat.to_string(), long.to_string()])
             {
                 result.push(coords);
+            } else {
+                result.push(vec![]);
             }
         }
         result

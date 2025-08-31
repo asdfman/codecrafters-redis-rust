@@ -79,7 +79,11 @@ pub fn array_of_arrays_response(items: Vec<Vec<String>>) -> CommandResponse {
     let mut result = String::new();
     result.push_str(&format!("*{}\r\n", items.len()));
     for item in items {
-        result.push_str(&encode_resp_array(&item));
+        if item.is_empty() {
+            result.push_str("*-1\r\n")
+        } else {
+            result.push_str(&encode_array_of_bstrings(&item));
+        }
     }
     CommandResponse::Single(result)
 }

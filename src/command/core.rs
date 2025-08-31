@@ -258,7 +258,7 @@ impl From<&[Data]> for Command {
                 latitude: lat.parse::<f64>().unwrap_or_default(),
                 member: member.into(),
             },
-            ("GEOPOS", [Data::BStr(key)]) => Self::Geopos {
+            ("GEOPOS", [Data::BStr(key), ..]) => Self::Geopos {
                 key: key.into(),
                 members: parse_string_args(&val[2..]),
             },
