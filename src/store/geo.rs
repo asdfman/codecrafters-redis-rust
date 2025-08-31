@@ -15,7 +15,7 @@ impl InMemoryStore {
                 .zscore(key.clone(), member)
                 .await
                 .map(decode)
-                .map(|(lat, long)| vec![lat.to_string(), long.to_string()])
+                .map(|(lat, long)| vec![long.to_string(), lat.to_string()])
             {
                 result.push(coords);
             } else {

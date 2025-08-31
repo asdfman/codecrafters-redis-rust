@@ -32,15 +32,15 @@ pub fn encode(lat: f64, long: f64) -> Decimal {
 
     let x = spread_int32_to_int64(norm_lat);
     let y = spread_int32_to_int64(norm_long);
-
     let y_shifted = y << 1;
     Decimal::from_u64(x | y_shifted).unwrap_or_default()
 }
 
 pub fn decode(score: Decimal) -> (f64, f64) {
     let score = score.to_u64().unwrap_or(0);
-    let y = score >> 1;
+    dbg!(score);
     let x = score;
+    let y = score >> 1;
 
     let compact_int64_to_int32 = |mut v: u64| {
         v &= 0x5555555555555555;
@@ -48,17 +48,16 @@ pub fn decode(score: Decimal) -> (f64, f64) {
         v = (v | (v >> 2)) & 0x0F0F0F0F0F0F0F0F;
         v = (v | (v >> 4)) & 0x00FF00FF00FF00FF;
         v = (v | (v >> 8)) & 0x0000FFFF0000FFFF;
-        v = (v | (v >> 16)) & 0x00000000FFFFFFFF;
-        v as u32
+        ((v | (v >> 16)) & 0x00000000FFFFFFFF) as u32
     };
 
     let compacted_lat = compact_int64_to_int32(x);
     let compacted_long = compact_int64_to_int32(y);
 
-    let grid_lat_min = MIN_LAT + LAT_RANGE * compacted_lat as f64 / (2u64.pow(26) as f64);
-    let grid_lat_max = MAX_LAT + LAT_RANGE * (compacted_lat + 1) as f64 / (2u64.pow(26) as f64);
-    let grid_long_min = MAX_LONG + LONG_RANGE * compacted_long as f64 / (2u64.pow(26) as f64);
-    let grid_long_max = MAX_LONG + LONG_RANGE * (compacted_long + 1) as f64 / (2u64.pow(26) as f64);
+    let grid_lat_min = MIN_LAT + LAT_RANGE * (compacted_lat as f64 / 2.0f64.powi(26));
+    let grid_lat_max = MIN_LAT + LAT_RANGE * ((compacted_lat + 1) as f64 / 2.0f64.powi(26));
+    let grid_long_min = MIN_LONG + LONG_RANGE * (compacted_long as f64 / 2.0f64.powi(26));
+    let grid_long_max = MIN_LONG + LONG_RANGE * ((compacted_long + 1) as f64 / 2.0f64.powi(26));
 
     let lat = (grid_lat_min + grid_lat_max) / 2.0;
     let long = (grid_long_min + grid_long_max) / 2.0;
