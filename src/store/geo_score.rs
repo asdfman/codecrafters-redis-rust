@@ -38,7 +38,6 @@ pub fn encode(lat: f64, long: f64) -> Decimal {
 
 pub fn decode(score: Decimal) -> (f64, f64) {
     let score = score.to_u64().unwrap_or(0);
-    dbg!(score);
     let x = score;
     let y = score >> 1;
 
