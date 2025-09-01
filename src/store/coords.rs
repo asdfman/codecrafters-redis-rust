@@ -91,46 +91,6 @@ pub fn decode(score: Decimal) -> Point {
     }
 }
 
-// pub fn decode(score: Decimal) -> Point {
-//     let score = score.to_u64().unwrap_or(0);
-//     let x = score;
-//     let y = score >> 1;
-//
-//     let compact_int64_to_int32 = |mut v: u64| {
-//         v &= 0x5555555555555555;
-//         v = (v | (v >> 1)) & 0x3333333333333333;
-//         v = (v | (v >> 2)) & 0x0F0F0F0F0F0F0F0F;
-//         v = (v | (v >> 4)) & 0x00FF00FF00FF00FF;
-//         v = (v | (v >> 8)) & 0x0000FFFF0000FFFF;
-//         ((v | (v >> 16)) & 0x00000000FFFFFFFF) as u32
-//     };
-//
-//     let compacted_lat = compact_int64_to_int32(x);
-//     let compacted_long = compact_int64_to_int32(y);
-//
-//     convert_grid_numbers_to_coordinates(compacted_lat, compacted_long)
-// }
-//
-// fn convert_grid_numbers_to_coordinates(
-//     grid_latitude_number: u32,
-//     grid_longitude_number: u32,
-// ) -> Point {
-//     // Calculate the grid boundaries
-//     let grid_latitude_min = MIN_LAT + LAT_RANGE * (grid_latitude_number as f64 / 2.0_f64.powi(26));
-//     let grid_latitude_max =
-//         MIN_LAT + LAT_RANGE * ((grid_latitude_number + 1) as f64 / 2.0_f64.powi(26));
-//     let grid_longitude_min =
-//         MIN_LONG + LONG_RANGE * (grid_longitude_number as f64 / 2.0_f64.powi(26));
-//     let grid_longitude_max =
-//         MIN_LONG + LONG_RANGE * ((grid_longitude_number + 1) as f64 / 2.0_f64.powi(26));
-//
-//     // Calculate the center point of the grid cell
-//     let lat = (grid_latitude_min + grid_latitude_max) / 2.0;
-//     let lon = (grid_longitude_min + grid_longitude_max) / 2.0;
-//
-//     Point { lat, lon }
-// }
-
 pub fn haversine(origin: &Point, destination: &Point) -> f64 {
     const EARTH_RADIUS: f64 = 6372797.560856;
 
